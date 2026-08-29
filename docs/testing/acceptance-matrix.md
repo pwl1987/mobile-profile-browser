@@ -1,23 +1,29 @@
-# V0.1 Acceptance Matrix
+# V0.1 验收矩阵
 
-| ID | Area | Acceptance |
+| ID | 范围 | 验收标准 |
 |---|---|---|
-| P-01 | Profile | Create, rename, activate and delete a Profile |
-| P-02 | Isolation | Cookies from A are absent in B |
-| P-03 | Isolation | LocalStorage/IndexedDB from A are absent in B |
-| P-04 | Isolation | Permissions do not unintentionally cross Profiles |
-| P-05 | Lifecycle | Repeated start/stop/switch is idempotent |
-| P-06 | Recovery | Crash during switch leaves one valid active-profile state |
-| N-01 | Network | Direct route is explicitly distinguishable from proxied route |
-| N-02 | Network | Protected route does not silently fall back to direct traffic |
-| N-03 | Network | DNS/IPv6/WebRTC behavior is documented and tested before claiming leak resistance |
-| S-01 | Secrets | SSH credentials never appear in ordinary logs |
-| S-02 | Secrets | Sensitive credentials are Keystore protected |
-| D-01 | Device | Device-profile schema validates incompatible values |
-| D-02 | Device | Unsupported engine controls are reported as unsupported, not spoofed |
-| U-01 | Upstream | Exact WebLibre baseline commit is recorded |
-| U-02 | Build | Clean checkout can reproduce a debug APK |
+| P-01 | Profile | 可以创建、重命名、激活、停止和删除 Profile |
+| P-02 | 隔离 | A 的 Cookie 在 B 中不可见 |
+| P-03 | 隔离 | A 的 LocalStorage / IndexedDB 在 B 中不可见 |
+| P-04 | 隔离 | 权限状态不会无意跨 Profile 共享 |
+| P-05 | 生命周期 | 重复启动、停止、切换具有幂等结果 |
+| P-06 | 恢复 | 切换过程中发生崩溃后仍只存在一个有效活动 Profile 状态 |
+| N-01 | 网络 | 直连线路与代理线路能够明确区分 |
+| N-02 | 网络 | 受保护线路故障后不会静默回落到直连 |
+| N-03 | 网络 | 在声称具备防泄漏能力前，必须测试 DNS、IPv4/IPv6、WebRTC |
+| S-01 | 秘密 | SSH 凭据不会出现在普通日志 |
+| S-02 | 秘密 | 敏感凭据受到 Android Keystore 等机制保护 |
+| D-01 | 设备 | DeviceProfile 能够拒绝不兼容字段组合 |
+| D-02 | 设备 | 引擎无法控制的字段明确报告为 unsupported，而不是伪装成功 |
+| U-01 | 上游 | WebLibre 精确基线 commit 已记录 |
+| U-02 | 构建 | 干净检出能够重复构建 Debug APK |
+| U-03 | 合规 | 上游许可证与第三方依赖清单完成审计 |
 
-## Release rule
+## 发布规则
 
-No feature is marked complete solely because the UI exists. It needs a test or a documented engine limitation and an explicit acceptance result.
+不能因为 UI 已经存在就把功能标记为完成。每项功能必须同时满足：
+
+- 有自动化或真机测试；或
+- 有明确的引擎限制说明、验证结果和已知风险。
+
+任何涉及 Profile 隔离、网络泄漏和秘密保护的功能，必须以可验证结果为准，不能以“理论上应该如此”作为验收依据。
