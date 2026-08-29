@@ -2,10 +2,10 @@ enum ProfileStatus { created, ready, starting, running, stopping, error, degrade
 
 enum CapabilityState { controlled, derived, observed, unsupported }
 
-/// 本项目自己的完整移动 Profile 领域对象。
+/// 完整的移动 Profile 领域对象。
 ///
-/// 它只描述业务身份及其引用，不直接持有 WebLibre、Gecko、sing-box
-/// 或 SSH 的具体实现对象。
+/// Profile 只保存其他领域对象的稳定引用，不直接持有浏览器内核、代理
+/// runtime 或 SSH client 等具体实现对象。
 final class MobileProfile {
   const MobileProfile({
     required this.id,
@@ -74,10 +74,10 @@ final class DisplayProfile {
   final double? touchSamplingRateHz;
 }
 
-/// 描述设备/浏览器能力组合。
+/// 描述一个相互一致的 Android 设备/浏览器能力组合。
 ///
-/// Find N3 等折叠屏必须同时描述外屏和内屏，而不是假设只有一套固定
-/// screen metrics。V0.1 只建立模型，不声称能够修改底层 Gecko 能力。
+/// 注意：硬件规格不能自动等价于浏览器运行时可见值。运行时观测得到的
+/// screen metrics、DPR、Client Hints、WebGL 等必须单独记录。
 final class DeviceProfile {
   const DeviceProfile({
     required this.id,
@@ -118,46 +118,178 @@ final class DeviceProfile {
   final CapabilityState webglState;
 }
 
-enum NetworkRouteType { direct, http, socks5, sshTunnel, vpnTunnel }
+enum NetworkProviderKind {
+  direct,
+  http,
+  socks5,
+  singbox,
+  ssh,
+  wireguard,
+  vpnTun,
+  tor,
+}
+
+enum ProviderProtocol {
+  http,
+  socks5,
+  shadowsocks,
+  vmess,
+  vless,
+  trojan,
+  naive,
+  hysteria,
+  hysteria2,
+  tuic,
+  ssh,
+  wireguard,
+  shadowTls,
+  anyTls,
+  customOutbound,
+  none,
+}
 
 enum NetworkRouteStatus {
   unknown,
   starting,
-  healthy,
+  connected,
   degraded,
+  reconnecting,
   stopping,
   stopped,
+  blocked,
   error,
 }
 
-/// Profile 对网络出口的逻辑引用。
+enum NetworkHealthState { unknown, checking, healthy, degraded, unsafe, failed }
+
+enum TrafficState { unknown, allowed, blocked }
+
+enum LeakState { unknown, checking, safe, detected, unavailable }
+
+enum FailureMode { closed, open }
+
+final class ProviderCapabilities {
+  const ProviderCapabilities({
+    this.tcp = false,
+    this.udp = false,
+    this.ipv4 = true,
+    this.ipv6 = false,
+    this.dns = false,
+    this.tun = false,
+    this.browserProxy = false,
+  });
+
+  final bool tcp;
+  final bool udp;
+  final bool ipv4;
+  final bool ipv6;
+  final bool dns;
+  final bool tun;
+  final bool browserProxy;
+}
+
+final class NetworkPolicy {
+  const NetworkPolicy({
+    this.dnsMode = 'proxy',
+    this.ipv6Mode = 'follow_provider',
+    this.webrtcMode = 'proxy',
+    this.failClosed = true,
+    this.allowBackgroundTraffic = false,
+  });
+
+  final String dnsMode;
+  final String ipv6Mode;
+  final String webrtcMode;
+  final bool failClosed;
+  final bool allowBackgroundTraffic;
+}
+
+final class FailurePolicy {
+  const FailurePolicy({
+    this.mode = FailureMode.closed,
+    this.startupFailure = true,
+    this.runtimeFailure = true,
+    this.dnsFailure = true,
+    this.healthFailure = true,
+    this.credentialFailure = true,
+    this.maxReconnectAttempts = 0,
+  });
+
+  final FailureMode mode;
+  final bool startupFailure;
+  final bool runtimeFailure;
+  final bool dnsFailure;
+  final bool healthFailure;
+  final bool credentialFailure;
+  final int maxReconnectAttempts;
+}
+
+/// 线路只描述逻辑关系；具体协议配置放在 providerConfigRef 中。
 final class NetworkRoute {
   const NetworkRoute({
     required this.id,
-    required this.type,
-    this.endpointRef,
+    required this.name,
+    required this.provider,
+    this.protocol = ProviderProtocol.none,
+    this.providerConfigRef,
     this.credentialRef,
-    this.hostKeyRef,
-    this.dnsPolicy = 'default',
-    this.ipv6Policy = 'default',
-    this.webrtcPolicy = 'default',
-    this.failClosed = true,
-    this.healthStatus = NetworkRouteStatus.unknown,
+    this.trustRef,
+    this.policy = const NetworkPolicy(),
+    this.failurePolicy = const FailurePolicy(),
+    this.capabilities = const ProviderCapabilities(),
+    this.schemaVersion = 1,
   });
 
   final String id;
-  final NetworkRouteType type;
-  final String? endpointRef;
-
-  /// 指向 Android Keystore / 安全存储中的凭据，而不是凭据正文。
+  final String name;
+  final NetworkProviderKind provider;
+  final ProviderProtocol protocol;
+  final String? providerConfigRef;
   final String? credentialRef;
+  final String? trustRef;
+  final NetworkPolicy policy;
+  final FailurePolicy failurePolicy;
+  final ProviderCapabilities capabilities;
+  final int schemaVersion;
+}
 
-  /// 指向已验证的 SSH 主机密钥记录；建议生产环境固定主机密钥。
-  final String? hostKeyRef;
+final class NetworkHealth {
+  const NetworkHealth({
+    this.connection = NetworkRouteStatus.unknown,
+    this.health = NetworkHealthState.unknown,
+    this.traffic = TrafficState.unknown,
+    this.leak = LeakState.unknown,
+    this.lastSuccess,
+    this.lastFailure,
+  });
 
-  final String dnsPolicy;
-  final String ipv6Policy;
-  final String webrtcPolicy;
-  final bool failClosed;
-  final NetworkRouteStatus healthStatus;
+  final NetworkRouteStatus connection;
+  final NetworkHealthState health;
+  final TrafficState traffic;
+  final LeakState leak;
+  final DateTime? lastSuccess;
+  final DateTime? lastFailure;
+}
+
+/// 一次真实运行实例。用于区分崩溃前后的 runtime，避免旧状态覆盖新状态。
+final class RuntimeInstance {
+  const RuntimeInstance({
+    required this.id,
+    required this.profileId,
+    required this.routeId,
+    required this.providerInstanceId,
+    required this.generation,
+    required this.startedAt,
+    this.stoppedAt,
+    this.status = NetworkRouteStatus.unknown,
+  });
+
+  final String id;
+  final String profileId;
+  final String routeId;
+  final String providerInstanceId;
+  final int generation;
+  final DateTime startedAt;
+  final DateTime? stoppedAt;
+  final NetworkRouteStatus status;
 }
