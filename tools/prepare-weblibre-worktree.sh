@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEBLIBRE_DIR="$ROOT_DIR/vendor/weblibre"
 APP_DIR="$WEBLIBRE_DIR/apps/weblibre"
-LOCKED_COMMIT="b4721ae6b34aea65e589417b3a64244cc14dbb91"
+LOCKED_COMMIT="dc74be456efab51823bfc913114abb77af5c231c"
 
 actual_commit="$(git -C "$WEBLIBRE_DIR" rev-parse HEAD)"
 if [[ "$actual_commit" != "$LOCKED_COMMIT" ]]; then
