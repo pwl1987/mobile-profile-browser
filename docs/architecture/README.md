@@ -7,8 +7,9 @@
 | 文档 | 内容 | 状态 |
 |---|---|---|
 | [V0.1 架构基线](v0.1-baseline.md) | 第一阶段冻结范围与非目标 | 基线 |
-| [M1 浏览器底座](m1-browser-foundation.md) | WebLibre 导入与 Android 验收 Gate | 实施中 |
+| [M1 浏览器底座](m1-browser-foundation.md) | WebLibre 导入与 Android 验收 Gate | 基线（已通过） |
 | [M1 构建环境](m1-build-environment.md) | Flutter / Dart / Android 可重复构建环境 | 基线 |
+| [M2 Profile Core](m2-profile-core.md) | CRUD / SQLite / 迁移 / 崩溃恢复 | 实施中 |
 | [Profile 模型](profile-model.md) | Profile 身份、隔离与生命周期 | 设计中 |
 | [领域模型](domain-model.md) | MobileProfile、DeviceProfile、NetworkRoute | 实施中 |
 | [网络架构](networking.md) | Provider、DNS、SSH、TUN/VPN 与故障策略 | 实施中 |
@@ -17,6 +18,7 @@
 | [身份暴露矩阵](identity-exposure-matrix.md) | 可控制、可观测和不可控制的身份信息 | 基线 |
 | [上游审计](upstream-audit.md) | WebLibre 复用、改造与隔离边界 | 进行中 |
 | [上游锁定](upstream-lock.md) | WebLibre commit 与升级规则 | 基线 |
+| [上游锁定记录](../upstream/weblibre.md) | 当前锁定 commit / 工具链 / 升级流程 | 基线 |
 | [项目治理](../project-governance.md) | 技术决策、验收和变更规则 | 基线 |
 
 ## 架构原则
