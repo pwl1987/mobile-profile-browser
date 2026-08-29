@@ -20,6 +20,41 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: 释放磁盘空间
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
+      - name: 设置 Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 设置 Go 1.25
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: 安装 Android NDK
+        run: |
+          set -euo pipefail
+          NDK_VERSION="$(sed -n 's/^weblibre\.ndkVersion[[:space:]]*=[[:space:]]*//p' vendor/weblibre/apps/weblibre/android/gradle.properties)"
+          test -n "$NDK_VERSION"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
+          test -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties"
+          {
+            echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION"
+            echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION"
+            echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION"
+          } >> "$GITHUB_ENV"
+
       - name: 设置 Flutter 3.47.1
         uses: subosito/flutter-action@v2
         with:
@@ -38,6 +73,26 @@ jobs:
       - name: 获取 WebLibre 依赖
         working-directory: vendor/weblibre
         run: dart pub get
+
+      - name: 准备原生运行时源码
+        run: |
+          set -euo pipefail
+          source vendor/weblibre/native/go_mobile_runtime/pins.env
+
+          git clone https://github.com/SagerNet/sing-box.git "$RUNNER_TEMP/sing-box"
+          git -C "$RUNNER_TEMP/sing-box" checkout "$SING_BOX_TAG"
+          test "$(git -C "$RUNNER_TEMP/sing-box" rev-parse HEAD)" = "$SING_BOX_COMMIT"
+
+          git clone https://github.com/tladesignz/IPtProxy.git "$RUNNER_TEMP/IPtProxy"
+          git -C "$RUNNER_TEMP/IPtProxy" checkout "$IPTPROXY_TAG"
+          git -C "$RUNNER_TEMP/IPtProxy" submodule update --init dnstt
+          test "$(git -C "$RUNNER_TEMP/IPtProxy" rev-parse HEAD)" = "$IPTPROXY_COMMIT"
+
+      - name: 构建 WebLibre 原生 gomobile Runtime
+        env:
+          SING_BOX_SOURCE: ${{ runner.temp }}/sing-box
+          IPTPROXY_SOURCE: ${{ runner.temp }}/IPtProxy
+        run: bash vendor/weblibre/native/go_mobile_runtime/scripts/build-android.sh
 
       - name: 静态分析 WebLibre 应用
         working-directory: vendor/weblibre/apps/weblibre
