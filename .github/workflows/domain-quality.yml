@@ -1,0 +1,40 @@
+name: 领域层质量检查
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  domain-quality:
+    name: Dart 领域层
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 安装 Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: 获取依赖
+        working-directory: packages/mobile_profile_domain
+        run: dart pub get
+
+      - name: 静态分析
+        working-directory: packages/mobile_profile_domain
+        run: dart analyze
+
+      - name: 单元测试
+        working-directory: packages/mobile_profile_domain
+        run: dart test
+
+      - name: 校验 WebLibre 上游基线
+        run: ./tools/import-weblibre.sh
