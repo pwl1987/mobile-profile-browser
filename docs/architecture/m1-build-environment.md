@@ -8,18 +8,16 @@
 
 | 组件 | M1 基线 |
 |---|---|
-| Flutter | 3.32.8 stable |
-| Dart | 3.8.1 |
+| Flutter | 3.38.5 stable |
+| Dart | 3.10.4 |
 | Android | GitHub Actions Ubuntu runner 上的 Android 工具链；真机版本另行验收 |
 | WebLibre | `dc74be456efab51823bfc913114abb77af5c231c` |
 
-Flutter 3.32 系列对应 Dart 3.8 系列；Dart 3.8.1 对应 Flutter 3.32.8。M1 以实际依赖约束为准，不以 WebLibre 仓库中可能滞后的 `.metadata` 版本声明作为构建依据。
+Flutter 3.38.5 官方对应 Dart 3.10.4。选择该版本是因为锁定的 WebLibre 工作区包含示例包，其 SDK 约束要求 Dart `^3.10.4`；更早的 3.38.x 版本不能满足该约束。citeturn814351search0
 
 ## 为什么不使用上游 `.metadata`
 
-当前锁定的 WebLibre commit 中，`.metadata` 记录的 Flutter revision 对应 Flutter 3.22.2，但同一 commit 的应用 `pubspec.yaml` 要求 Dart `>=3.8.0 <4.0.0`。直接使用 `.metadata` 的 Flutter 版本会导致依赖解析无法满足。
-
-因此本项目把 Flutter/Dart 作为自己的可重复构建输入单独锁定，并在 CI 中校验 Dart 版本。
+当前锁定的 WebLibre commit 中，`.metadata` 记录的 Flutter revision 与实际工作区依赖约束不一致。M1 不把 `.metadata` 当作唯一构建依据，而是根据工作区 `pubspec.yaml` 的实际 SDK 下限选择可重复构建版本。
 
 ## M1 构建流程
 
@@ -30,9 +28,9 @@ Flutter 3.32 系列对应 Dart 3.8 系列；Dart 3.8.1 对应 Flutter 3.32.8。M
         ↓
 校验 WebLibre commit
         ↓
-安装 Flutter 3.32.8 / Dart 3.8.1
+安装 Flutter 3.38.5 / Dart 3.10.4
         ↓
-flutter pub get
+在 WebLibre 工作区执行 dart pub get
         ↓
 flutter analyze
         ↓
