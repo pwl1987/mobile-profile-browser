@@ -27,7 +27,11 @@
 
 - 上游项目：WebLibre
 - 上游仓库：<https://github.com/FaFre/WebLibre>
-- 审计基线：`dc74be456efab51823bfc913114abb77af5c231c`
+- 构建锁定基线：`b4721ae6b34aea65e589417b3a64244cc14dbb91`
+  （审计范围覆盖到其子提交 `dc74be45`；`dc74be45` 的 "update flutter deps"
+  在 Flutter 3.47.1 下引入 material_ui 1.1.0 类型冲突导致上游自身
+  `flutter analyze` 失败，因此构建锁定在其父提交，详见
+  `docs/upstream/weblibre.md`）
 - 上游集成方式：`vendor/weblibre` Git Submodule
 
 当前已经完成：

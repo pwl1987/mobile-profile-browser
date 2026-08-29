@@ -14,12 +14,24 @@
 
 | 用途 | commit | 使用者 |
 |---|---|---|
-| **统一基线（2026-08-30 起）** | `dc74be456efab51823bfc913114abb77af5c231c` | git 索引、`tools/prepare-weblibre-worktree.sh`、`tools/import-weblibre.sh`、`tools/apply-weblibre-patches.sh`、全部 CI 工作流 |
+| **统一基线（2026-08-30 起）** | `b4721ae6b34aea65e589417b3a64244cc14dbb91` | git 索引、三个 tools 脚本、全部 CI 工作流、README |
 
-历史说明：M1 期间曾出现双基线并存——索引/CI 用 `b4721ae6...`（较旧，
-仅差 1 个上游提交 "update flutter deps"），文档/补丁脚本用
-`dc74be45...`。2026-08-30 统一到审计基线 `dc74be45`，子模块指针前进
-一个提交，android-m1 工作流在统一基线上重新验证了 APK Gate。
+统一过程与依据：
+
+1. M1 期间出现双基线并存：索引/CI 用 `b4721ae6`，文档/补丁脚本用
+   `dc74be45`（两者仅差 1 个上游提交），导致 domain-quality 工作流自
+   d7cd51a 起持续失败。
+2. 2026-08-30 曾尝试统一到审计基线 `dc74be45`（"update flutter deps"），
+   android-m1 工作流实测：**纯上游在 Flutter 3.47.1 下 `flutter analyze`
+   报 6 个 error**——material_ui 1.1.0 的 `ColorScheme` 与
+   flutter/material 的类型冲突（main.dart:470-486）。上游自身在该提交
+   不可分析通过。
+3. 因此统一回退到可构建的父提交 `b4721ae6`（M1 APK Gate 已在该基线
+   验证通过）。`dc74be45` 保留为审计范围上限。
+
+待办（M3 处理）：`patches/weblibre/0002-material-ui-compatibility.patch`
+针对 `dc74be45` 编写，在 `b4721ae6` 上无法应用；补丁流进入 CI 时需要
+基于 `b4721ae6` 重做或跟随上游修复 material_ui 冲突后重新评估基线。
 
 ## 构建工具链（M1 Gate 已验证）
 

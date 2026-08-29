@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEBLIBRE_DIR="$ROOT_DIR/vendor/weblibre"
 PUBSPEC="$WEBLIBRE_DIR/apps/weblibre/pubspec.yaml"
-EXPECTED_COMMIT="dc74be456efab51823bfc913114abb77af5c231c"
+EXPECTED_COMMIT="b4721ae6b34aea65e589417b3a64244cc14dbb91"
 
 if ! git -C "$WEBLIBRE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "错误：WebLibre 子模块未初始化：$WEBLIBRE_DIR" >&2
