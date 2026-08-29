@@ -1,0 +1,12 @@
+diff --git a/apps/weblibre/pubspec.yaml b/apps/weblibre/pubspec.yaml
+index 042093d..0000000 100644
+--- a/apps/weblibre/pubspec.yaml
++++ b/apps/weblibre/pubspec.yaml
+@@ -34,6 +34,10 @@ dependencies:
+   flutter_secure_storage: ^11.0.0
++  mobile_profile_domain:
++    path: ../../../packages/mobile_profile_domain
++  mobile_profile_integration:
++    path: ../../../packages/mobile_profile_integration
+   flutter_singbox_proxy:
+     path: ../../packages/flutter_singbox_proxy
