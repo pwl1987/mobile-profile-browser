@@ -30,7 +30,6 @@ final class DeviceProfileValidator {
     if (profile.deviceMemoryGb != null && profile.deviceMemoryGb! <= 0) {
       throw const DeviceProfileValidationError('deviceMemoryGb 必须大于 0');
     }
-
     if (profile.clientHintsState == CapabilityState.controlled &&
         profile.browserCompatibility == null) {
       throw const DeviceProfileValidationError(
@@ -56,8 +55,7 @@ final class DeviceProfileValidator {
     if (display.refreshRateHz != null && display.refreshRateHz! <= 0) {
       throw DeviceProfileValidationError('$label refreshRateHz 必须大于 0');
     }
-    if (display.touchSamplingRateHz != null &&
-        display.touchSamplingRateHz! <= 0) {
+    if (display.touchSamplingRateHz != null && display.touchSamplingRateHz! <= 0) {
       throw DeviceProfileValidationError('$label touchSamplingRateHz 必须大于 0');
     }
   }
@@ -84,11 +82,11 @@ final class NetworkRouteValidator {
     }
 
     if (route.provider == NetworkProviderKind.direct) {
+      if (route.protocol != ProviderProtocol.none) {
+        throw const NetworkRouteValidationError('直连线路不应声明代理协议');
+      }
       if (route.providerConfigRef != null || route.credentialRef != null) {
         throw const NetworkRouteValidationError('直连线路不应引用外部 Provider 配置或凭据');
-      }
-      if (route.failurePolicy.mode == FailureMode.open && route.policy.failClosed) {
-        throw const NetworkRouteValidationError('故障策略与线路 Fail Closed 配置冲突');
       }
       return;
     }
@@ -100,23 +98,51 @@ final class NetworkRouteValidator {
     if (route.policy.failClosed && route.failurePolicy.mode != FailureMode.closed) {
       throw const NetworkRouteValidationError('线路要求 Fail Closed 时，FailurePolicy 必须为 closed');
     }
-
     if (route.failurePolicy.maxReconnectAttempts < 0) {
       throw const NetworkRouteValidationError('maxReconnectAttempts 不能小于 0');
     }
 
-    if (route.provider == NetworkProviderKind.ssh &&
-        route.credentialRef == null &&
-        route.trustRef == null) {
-      throw const NetworkRouteValidationError('SSH 线路至少需要凭据或受信任主机配置引用');
-    }
-
-    if (route.protocol != ProviderProtocol.none &&
-        route.provider != NetworkProviderKind.singbox &&
-        route.provider != NetworkProviderKind.http &&
-        route.provider != NetworkProviderKind.socks5 &&
-        route.provider != NetworkProviderKind.ssh) {
-      throw const NetworkRouteValidationError('当前 Provider 与协议类型组合不受支持');
+    switch (route.provider) {
+      case NetworkProviderKind.http:
+        if (route.protocol != ProviderProtocol.http) {
+          throw const NetworkRouteValidationError('HTTP Provider 必须使用 HTTP 协议');
+        }
+        break;
+      case NetworkProviderKind.socks5:
+        if (route.protocol != ProviderProtocol.socks5) {
+          throw const NetworkRouteValidationError('SOCKS5 Provider 必须使用 SOCKS5 协议');
+        }
+        break;
+      case NetworkProviderKind.ssh:
+        if (route.protocol != ProviderProtocol.ssh) {
+          throw const NetworkRouteValidationError('SSH Provider 必须使用 SSH 协议');
+        }
+        if (route.credentialRef == null || route.credentialRef!.trim().isEmpty) {
+          throw const NetworkRouteValidationError('SSH Provider 必须引用安全凭据');
+        }
+        if (route.trustRef == null || route.trustRef!.trim().isEmpty) {
+          throw const NetworkRouteValidationError('SSH Provider 必须引用主机信任配置');
+        }
+        break;
+      case NetworkProviderKind.singbox:
+        if (route.protocol == ProviderProtocol.none) {
+          throw const NetworkRouteValidationError('sing-box Provider 必须声明具体协议');
+        }
+        break;
+      case NetworkProviderKind.wireguard:
+        if (route.protocol != ProviderProtocol.wireguard) {
+          throw const NetworkRouteValidationError('WireGuard Provider 必须使用 WireGuard 协议');
+        }
+        break;
+      case NetworkProviderKind.vpnTun:
+        break;
+      case NetworkProviderKind.tor:
+        if (route.protocol != ProviderProtocol.none) {
+          throw const NetworkRouteValidationError('Tor Provider 不应声明代理协议');
+        }
+        break;
+      case NetworkProviderKind.direct:
+        break;
     }
   }
 }
