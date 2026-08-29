@@ -1,23 +1,31 @@
-# V0.1 Acceptance Matrix
+# V0.1 验收矩阵
 
-| ID | Area | Acceptance |
-|---|---|---|
-| P-01 | Profile | Create, rename, activate and delete a Profile |
-| P-02 | Isolation | Cookies from A are absent in B |
-| P-03 | Isolation | LocalStorage/IndexedDB from A are absent in B |
-| P-04 | Isolation | Permissions do not unintentionally cross Profiles |
-| P-05 | Lifecycle | Repeated start/stop/switch is idempotent |
-| P-06 | Recovery | Crash during switch leaves one valid active-profile state |
-| N-01 | Network | Direct route is explicitly distinguishable from proxied route |
-| N-02 | Network | Protected route does not silently fall back to direct traffic |
-| N-03 | Network | DNS/IPv6/WebRTC behavior is documented and tested before claiming leak resistance |
-| S-01 | Secrets | SSH credentials never appear in ordinary logs |
-| S-02 | Secrets | Sensitive credentials are Keystore protected |
-| D-01 | Device | Device-profile schema validates incompatible values |
-| D-02 | Device | Unsupported engine controls are reported as unsupported, not spoofed |
-| U-01 | Upstream | Exact WebLibre baseline commit is recorded |
-| U-02 | Build | Clean checkout can reproduce a debug APK |
+| ID | 领域 | 验收条件 | 状态 |
+|---|---|---|---|
+| P-01 | Profile | 可以创建、重命名、激活、停止和删除 Profile | 待验证 |
+| P-02 | 隔离 | A 的 Cookie 在 B 中不可见 | 待验证 |
+| P-03 | 隔离 | A 的 LocalStorage / IndexedDB 在 B 中不可见 | 待验证 |
+| P-04 | 隔离 | 网站权限不会在 Profile 间非预期共享 | 待验证 |
+| P-05 | 生命周期 | 重复启动、停止、切换操作保持幂等 | 待验证 |
+| P-06 | 恢复 | 切换过程中崩溃后仍能恢复一个有效的活动 Profile | 待验证 |
+| P-07 | 删除 | 删除 Profile 后约定范围的数据得到清理 | 待验证 |
+| N-01 | 网络 | 直连路由与代理路由可以明确区分 | 待验证 |
+| N-02 | 网络 | 防泄漏模式下代理失败不会静默回退直连 | 待验证 |
+| N-03 | 网络 | DNS / IPv6 / WebRTC 行为经过测试后才能声明防泄漏 | 待验证 |
+| N-04 | 网络 | SSH 隧道断开、重连和超时行为符合路由策略 | 待验证 |
+| S-01 | Secret | SSH 凭据不会出现在普通日志 | 待验证 |
+| S-02 | Secret | 敏感凭据由 Android Keystore 保护 | 待验证 |
+| S-03 | Secret | 崩溃报告和诊断信息不会包含 Cookie / Token / 私钥 | 待验证 |
+| D-01 | Device | Device Profile Schema 可以拒绝不兼容参数 | 待验证 |
+| D-02 | Device | 不支持的引擎控制明确报告为不支持 | 待验证 |
+| U-01 | 上游 | WebLibre 精确基线 commit 已记录 | 待验证 |
+| U-02 | 构建 | 干净检出可以复现 Debug APK | 待验证 |
+| U-03 | 上游 | 首批导入代码经过许可证和变更范围审计 | 待验证 |
 
-## Release rule
+## 发布规则
 
-No feature is marked complete solely because the UI exists. It needs a test or a documented engine limitation and an explicit acceptance result.
+不能因为 UI 已经显示某个功能，就把功能标记为“完成”。每项功能必须有测试证据；如果底层引擎存在限制，则必须记录限制、影响范围和验证结果。
+
+## 测试原则
+
+测试必须尽量在真实 Android 设备上进行。模拟器只能作为开发和自动化测试环境，不能替代涉及浏览器存储、网络路由、VPN/TUN、电量和后台限制的最终验收。
