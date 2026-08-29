@@ -1,8 +1,8 @@
-# Profile Model
+# Profile 模型
 
-## Identity
+## 1. 身份
 
-A Profile has a stable random `profile_id`. Display names are mutable and are never used as storage identifiers.
+每个 Profile 使用稳定、随机的 `profile_id`。显示名称可以修改，绝不能作为存储目录或其他持久化资源的唯一标识。
 
 ```text
 Profile
@@ -17,7 +17,7 @@ Profile
 └── schema_version
 ```
 
-## Lifecycle
+## 2. 生命周期
 
 ```text
 CREATED → STARTING → ACTIVE → STOPPING → STOPPED
@@ -25,23 +25,45 @@ CREATED → STARTING → ACTIVE → STOPPING → STOPPED
                        └────────────→ ERROR
 ```
 
-Only one lifecycle owner may mutate a Profile runtime at a time. State transitions must be idempotent.
+同一时间只能由一个生命周期管理者修改 Profile 的运行时状态。状态转换必须具备幂等性。
 
-## Isolation contract
+## 3. 隔离契约
 
-A Profile must have an explicit ownership mapping for every persistent datum. Data is either:
+每一项持久化数据都必须有明确的所有权分类：
 
-- `PROFILE`: owned by one Profile;
-- `APP_GLOBAL`: intentionally shared by the application;
-- `EPHEMERAL`: runtime-only and discarded;
-- `SECRET`: encrypted and separately protected.
+- `PROFILE`：只属于一个 Profile；
+- `APP_GLOBAL`：应用明确允许共享；
+- `EPHEMERAL`：仅运行时存在，运行结束后丢弃；
+- `SECRET`：加密保存并受到单独保护。
 
-Cookies, site storage, browsing sessions and permissions are `PROFILE` unless an upstream engine primitive makes a narrower boundary necessary and the exception is documented.
+Cookie、站点存储、浏览会话和权限默认属于 `PROFILE`。如果上游浏览器引擎只能提供更窄或不同的隔离边界，必须记录例外原因和验证方法。
 
-## Concurrency
+## 4. 并发策略
 
-V0.1 should support one active browser runtime at a time. The data model may support multiple Profiles, but simultaneous live Gecko runtimes are deferred until memory/CPU behavior is measured on target devices.
+V0.1 默认一次只运行一个活动浏览器运行时。数据模型可以管理多个 Profile，但多个 Gecko Runtime 同时常驻暂缓，必须先在目标 Android 设备上测量内存、CPU、电量和稳定性。
 
-## Import/export
+## 5. 导入/导出
 
-Import/export is deferred. When implemented, an export must carry a schema version and must not silently import secrets or global state.
+V0.1 暂不实现导入/导出。后续实现时，导出文件必须包含 schema 版本，并且不得无提示地导入 SSH 私钥等秘密或应用全局状态。
+
+## 6. 删除
+
+删除 Profile 必须经过明确的生命周期操作：
+
+```text
+ACTIVE
+  ↓
+STOPPING
+  ↓
+STOPPED
+  ↓
+DELETE_PENDING
+  ↓
+DATA_PURGED
+```
+
+删除失败不能伪装成成功；必须能够报告残留数据类型和清理状态。
+
+## 7. 运行时恢复
+
+应用崩溃或 Android 进程被回收后，启动恢复逻辑必须从持久化状态重新确认活动 Profile，而不是依赖内存中的 UI 状态。
