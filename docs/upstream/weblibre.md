@@ -10,17 +10,16 @@
 - 集成方式：`vendor/weblibre` Git Submodule，永远锁定 commit
 - 禁止 `git submodule update --remote` 跟随上游分支
 
-## 当前锁定基线（双基线并存，见说明）
+## 当前锁定基线
 
 | 用途 | commit | 使用者 |
 |---|---|---|
-| 索引 / CI APK 构建基线 | `b4721ae6b34aea65e589417b3a64244cc14dbb91` | git 索引、`tools/prepare-weblibre-worktree.sh`、`android-m1.yml` |
-| 审计 / 文档 / 补丁基线 | `dc74be456efab51823bfc913114abb77af5c231c` | `README.md`、`tools/import-weblibre.sh`、`tools/apply-weblibre-patches.sh` |
+| **统一基线（2026-08-30 起）** | `dc74be456efab51823bfc913114abb77af5c231c` | git 索引、`tools/prepare-weblibre-worktree.sh`、`tools/import-weblibre.sh`、`tools/apply-weblibre-patches.sh`、全部 CI 工作流 |
 
-说明：M1 期间索引基线与审计基线曾短暂分叉（工作树检出审计基线时
-`git status` 显示 `M vendor/weblibre` 属预期）。两套脚本各自硬校验目标
-commit，改动任一脚本前先确认目标基线。统一双基线属于一次正式上游变更，
-必须走下方升级流程。
+历史说明：M1 期间曾出现双基线并存——索引/CI 用 `b4721ae6...`（较旧，
+仅差 1 个上游提交 "update flutter deps"），文档/补丁脚本用
+`dc74be45...`。2026-08-30 统一到审计基线 `dc74be45`，子模块指针前进
+一个提交，android-m1 工作流在统一基线上重新验证了 APK Gate。
 
 ## 构建工具链（M1 Gate 已验证）
 
