@@ -162,8 +162,7 @@ void main() {
     final ordered = await service.list();
     expect(ordered.map((p) => p.name).toList(), ['更早', '同时创建 B', '同时创建 A']);
     expect(ordered[1].id.compareTo(ordered[2].id), lessThan(0));
-    expect(ordered[0].id, isNot(first.id));
-    expect(ordered[0].name, '更早');
+    expect(ordered[0].id, earlier.id);
     expect(second.name, '同时创建 A');
     expect(first.name, '同时创建 B');
   });

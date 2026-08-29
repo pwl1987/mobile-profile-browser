@@ -2,6 +2,7 @@ import 'package:mobile_profile_domain/mobile_profile_domain.dart';
 
 import 'browser_profile_adapter.dart';
 import 'network_runtime.dart';
+import 'runtime_handles.dart';
 
 /// 负责把一个 MobileProfile 的浏览器 Runtime 与网络 Runtime 串成单一启动/停止事务。
 ///
@@ -65,7 +66,7 @@ final class ProfileRuntimeCoordinator {
     }
 
     if (firstError != null) {
-      Error.throwWithStackTrace(firstError!, StackTrace.current);
+      Error.throwWithStackTrace(firstError, StackTrace.current);
     }
   }
 }

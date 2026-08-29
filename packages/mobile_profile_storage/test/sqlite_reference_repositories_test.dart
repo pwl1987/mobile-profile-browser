@@ -16,9 +16,10 @@ void main() {
   test('DeviceProfile 文档往返保持双屏规格', () async {
     await store.deviceProfiles.save(OppoFindN3Profiles.china);
 
-    final loaded = await store.deviceProfiles.findById(OppoFindN3Profiles.china.id);
-    expect(loaded!.model, OppoFindN3Profiles.china.model);
-    expect(loaded!.regionalModel, OppoFindN3Profiles.china.regionalModel);
+    final loaded =
+        (await store.deviceProfiles.findById(OppoFindN3Profiles.china.id))!;
+    expect(loaded.model, OppoFindN3Profiles.china.model);
+    expect(loaded.regionalModel, OppoFindN3Profiles.china.regionalModel);
     expect(loaded.mainDisplay!.resolutionWidth, 2440);
     expect(loaded.coverDisplay!.resolutionWidth, 2484);
     expect(loaded.hardwareConcurrency, 8);

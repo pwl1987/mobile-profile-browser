@@ -159,7 +159,7 @@ final class MobileProfileService {
 
   /// 调用方未显式指定引用时，把默认实体写入存储（保证外键完整）；
   /// 显式指定了不存在的引用则直接拒绝，绝不静默替换成别的配置。
-  Future<void> _ensureBootstrapEntity<T>({
+  Future<void> _ensureBootstrapEntity<T extends Object>({
     required String? requestedId,
     required T fallback,
     required Future<T?> Function(String) loader,
