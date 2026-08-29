@@ -47,7 +47,13 @@ jobs:
           set -euo pipefail
           NDK_VERSION="$(sed -n 's/^weblibre\.ndkVersion[[:space:]]*=[[:space:]]*//p' vendor/weblibre/apps/weblibre/android/gradle.properties)"
           test -n "$NDK_VERSION"
+          set +e
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
+          sdkmanager_status=${PIPESTATUS[1]}
+          set -e
+          if [[ $sdkmanager_status -ne 0 ]]; then
+            exit "$sdkmanager_status"
+          fi
           test -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties"
           {
             echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION"
