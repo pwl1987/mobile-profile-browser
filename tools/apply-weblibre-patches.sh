@@ -25,17 +25,16 @@ for patch in "$PATCH_DIR"/*.patch; do
   if git apply --check "$patch" >/dev/null 2>&1; then
     git apply "$patch"
     echo "已应用补丁：$(basename "$patch")"
-  elif git diff --quiet --exit-code -- apps/weblibre/pubspec.yaml; then
-    echo "补丁无法应用：$(basename "$patch")" >&2
-    exit 1
-  else
-    # 已经应用过时，允许重复执行；若工作树存在其它相关改动则拒绝继续，
-    # 避免把用户修改误判成“补丁已应用”。
-    if git diff -- apps/weblibre/pubspec.yaml | grep -q 'mobile_profile_domain'; then
-      echo "补丁已应用：$(basename "$patch")"
-    else
-      echo "补丁存在冲突：$(basename "$patch")" >&2
-      exit 1
-    fi
+    continue
   fi
+
+  # 对已经应用的补丁使用反向检查判断，而不是根据某个文件内容关键词猜测。
+  if git apply --reverse --check "$patch" >/dev/null 2>&1; then
+    echo "补丁已应用：$(basename "$patch")"
+    continue
+  fi
+
+  echo "补丁存在冲突或基线不匹配：$(basename "$patch")" >&2
+  echo "不要继续构建，请先检查 WebLibre 锁定 commit 与补丁版本。" >&2
+  exit 1
 done
