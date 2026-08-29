@@ -20,26 +20,26 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: 设置 Flutter 3.32.8
+      - name: 设置 Flutter 3.38.5
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.8'
+          flutter-version: '3.38.5'
           channel: stable
           cache: true
 
       - name: 核验 Flutter / Dart 版本
         run: |
           flutter --version
-          test "$(flutter --version --machine | python -c "import json,sys; print(json.load(sys.stdin)['dartSdkVersion'])")" = "3.8.1"
+          test "$(flutter --version --machine | python -c "import json,sys; print(json.load(sys.stdin)['dartSdkVersion'])")" = "3.10.4"
 
       - name: 核验 WebLibre 上游基线
         run: bash ./tools/import-weblibre.sh
 
       - name: 获取 WebLibre 依赖
-        working-directory: vendor/weblibre/apps/weblibre
-        run: flutter pub get
+        working-directory: vendor/weblibre
+        run: dart pub get
 
-      - name: 静态分析 WebLibre
+      - name: 静态分析 WebLibre 应用
         working-directory: vendor/weblibre/apps/weblibre
         run: flutter analyze
 
