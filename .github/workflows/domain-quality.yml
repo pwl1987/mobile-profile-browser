@@ -22,7 +22,7 @@ jobs:
       - name: 安装 Dart
         uses: dart-lang/setup-dart@v1
         with:
-          sdk: stable
+          sdk: '3.13.1'
 
       - name: 获取依赖
         working-directory: packages/mobile_profile_domain
@@ -37,4 +37,4 @@ jobs:
         run: dart test
 
       - name: 校验 WebLibre 上游基线
-        run: ./tools/import-weblibre.sh
+        run: bash ./tools/import-weblibre.sh
