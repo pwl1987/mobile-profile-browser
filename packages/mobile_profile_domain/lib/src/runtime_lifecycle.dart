@@ -1,5 +1,6 @@
 import 'mobile_profile.dart';
 import 'repositories.dart';
+import 'runtime_instance.dart';
 
 /// 网络运行时适配接口。
 ///
