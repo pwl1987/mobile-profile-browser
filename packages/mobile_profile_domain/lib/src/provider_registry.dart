@@ -122,4 +122,12 @@ final class NetworkProviderRegistry {
     if (descriptor == null) return false;
     return descriptor.protocols.contains(route.protocol);
   }
+
+  /// 新建 Profile 未指定线路时使用的直连默认线路。
+  /// 仅作为初始引用；真实网络出口在 M5 Provider Gate 接入。
+  static const NetworkRoute defaultDirectRoute = NetworkRoute(
+    id: 'route-direct-default',
+    name: '默认直连',
+    provider: NetworkProviderKind.direct,
+  );
 }
