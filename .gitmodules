@@ -1,0 +1,3 @@
+[submodule "vendor/weblibre"]
+	path = vendor/weblibre
+	url = https://github.com/FaFre/WebLibre.git
