@@ -35,12 +35,6 @@ final class DeviceProfileValidator {
       throw const DeviceProfileValidationError('hardwareConcurrency 必须大于 0');
     }
 
-    if (profile.locale != null && !profile.locale!.contains('-')) {
-      throw const DeviceProfileValidationError(
-        'locale 应使用明确的语言-地区格式，例如 zh-CN',
-      );
-    }
-
     if (profile.clientHintsState == CapabilityState.controlled &&
         profile.browserCompatibility == null) {
       throw const DeviceProfileValidationError(
@@ -69,14 +63,16 @@ final class NetworkRouteValidator {
 
     if (route.type != NetworkRouteType.direct &&
         (route.endpointRef == null || route.endpointRef!.trim().isEmpty)) {
-      throw const NetworkRouteValidationError(
-        '非直连线路必须引用 endpoint',
-      );
+      throw const NetworkRouteValidationError('非直连线路必须引用 endpoint');
     }
 
-    if (route.type == NetworkRouteType.direct && !route.failClosed) {
+    if (route.type == NetworkRouteType.direct && route.endpointRef != null) {
+      throw const NetworkRouteValidationError('直连线路不应引用代理 endpoint');
+    }
+
+    if (route.failClosed && route.type == NetworkRouteType.direct) {
       throw const NetworkRouteValidationError(
-        'DIRECT 不允许依赖 failClosed 表示安全策略；请通过用户明确配置表达直连意图',
+        'DIRECT 不应使用 Fail Closed；直连必须作为用户明确选择的独立网络模式',
       );
     }
   }
