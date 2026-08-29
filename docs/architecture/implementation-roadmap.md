@@ -1,5 +1,28 @@
 # 实施路线图 V2
 
+## Gate 验收模型（当前生效）
+
+进度不以功能数量衡量，以**经过真实测试的能力**衡量。每个 Gate 有明确
+验收标准，未通过不进入下一阶段：
+
+| Gate | 内容 | 状态 |
+|---|---|---|
+| M1 | Android / WebLibre 可重复构建底座（APK Artifact） | ✅ 2026-08-30 |
+| M2 | Profile Core：CRUD + SQLite + 迁移 + 崩溃恢复 | 🔨 进行中 |
+| M3 | Browser Profile 隔离：Adapter + Storage/Cookie/权限隔离验证 | |
+| M4 | Runtime 生命周期：统一状态机 + 进程死亡恢复 | |
+| M5 | 网络 Provider：DIRECT / SOCKS5 / SSH | |
+| M6 | Device Profile：Find N3 一致性（折叠/展开/重建） | |
+| M7 | Identity Consistency / Exposure Audit | |
+| M8 | Android VPN/TUN（sing-box） | |
+| M9 | Release Candidate | |
+
+“完成”的定义示例：SSH Provider 不是“代码已写”，而是“真机上 Profile A 经
+VPS 出口访问测试站点确认公网出口变化；停止后 SSH 进程 / Local Proxy /
+Runtime 正确释放；重启后能重新建立连接”。
+
+下文的阶段划分是 V2 历史口径，能力维度以本表为准。
+
 ## 总体目标
 
 最终交付一个可安装在真实 Android 手机上的多 Profile 浏览器：
