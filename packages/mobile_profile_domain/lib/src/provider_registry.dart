@@ -53,6 +53,7 @@ final class NetworkProviderRegistry {
         ProviderProtocol.hysteria,
         ProviderProtocol.hysteria2,
         ProviderProtocol.tuic,
+        ProviderProtocol.ssh,
         ProviderProtocol.wireguard,
         ProviderProtocol.shadowTls,
         ProviderProtocol.anyTls,
