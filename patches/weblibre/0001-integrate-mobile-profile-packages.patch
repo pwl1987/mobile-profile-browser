@@ -1,13 +1,12 @@
 diff --git a/apps/weblibre/pubspec.yaml b/apps/weblibre/pubspec.yaml
 --- a/apps/weblibre/pubspec.yaml
 +++ b/apps/weblibre/pubspec.yaml
-@@ -37,6 +37,10 @@ dependencies:
+@@ -37,6 +37,8 @@ dependencies:
    flutter_reorderable_grid_view: ^5.7.0
    flutter_secure_storage: ^11.0.0
-+  material_ui: ^1.0.1
 +  mobile_profile_domain:
-+    path: ../../../../packages/mobile_profile_domain
++    path: ../../../packages/mobile_profile_domain
 +  mobile_profile_integration:
-+    path: ../../../../packages/mobile_profile_integration
++    path: ../../../packages/mobile_profile_integration
    flutter_singbox_proxy:
      path: ../../packages/flutter_singbox_proxy
