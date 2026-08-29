@@ -32,15 +32,8 @@ jobs:
           flutter --version
           test "$(flutter --version --machine | python -c "import json,sys; print(json.load(sys.stdin)['dartSdkVersion'])")" = "3.13.1"
 
-      - name: 核验 WebLibre 上游基线
-        run: bash ./tools/import-weblibre.sh
-
-      - name: 应用本项目 WebLibre 补丁层
-        run: bash ./tools/apply-weblibre-patches.sh
-
-      - name: 生成上游缺失的空资源目录
-        working-directory: vendor/weblibre/apps/weblibre
-        run: mkdir -p assets/quotes assets/sites assets/ublock
+      - name: 核验并准备 WebLibre 工作树
+        run: bash ./tools/prepare-weblibre-worktree.sh
 
       - name: 获取 WebLibre 依赖
         working-directory: vendor/weblibre
