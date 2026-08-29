@@ -1,2 +1,8 @@
 # 本地工具状态（Mimosa hook state 等）
 .mimosa/
+
+# 本地工具链（Dart SDK 等）
+.tools/
+
+# Dart 构建缓存
+.dart_tool/
