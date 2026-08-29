@@ -10,7 +10,7 @@
 - 锁定 Commit：`dc74be456efab51823bfc913114abb77af5c231c`
 - GeckoView / Mozilla Components：以上游锁定版本为准
 
-WebLibre 当前采用 Flutter + Gecko/GeckoView，并已经包含 Profile、Container、Cookie Isolation、Proxy、Tor 和 sing-box 等基础能力。正式集成前仍然需要在本项目中重新验证这些能力的实际边界。citeturn304090search0turn304090search4
+WebLibre 当前采用 Flutter + Gecko/GeckoView，并已经包含 Profile、Container、Cookie Isolation、Proxy、Tor 和 sing-box 等基础能力。正式集成前仍然需要在本项目中重新验证这些能力的实际边界。
 
 ## 集成原则
 
