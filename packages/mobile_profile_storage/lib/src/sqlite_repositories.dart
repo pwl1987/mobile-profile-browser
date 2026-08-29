@@ -1,0 +1,290 @@
+import 'dart:convert';
+
+import 'package:mobile_profile_domain/mobile_profile_domain.dart';
+import 'package:sqlite3/sqlite3.dart';
+
+/// 把领域日期统一为 UTC ISO-8601 文本，保证排序与往返稳定。
+String _formatDate(DateTime value) => value.toUtc().toIso8601String();
+
+DateTime _parseDate(String value) => DateTime.parse(value).toUtc();
+
+Map<String, String> _decodeMetadata(String source) {
+  if (source.trim().isEmpty) return const <String, String>{};
+  final value = jsonDecode(source);
+  if (value is! Map) {
+    throw const FormatException('profile.metadata 必须是 JSON 对象');
+  }
+  return value.map((k, v) => MapEntry(k as String, v as String));
+}
+
+final class SqliteMobileProfileRepository implements MobileProfileRepository {
+  SqliteMobileProfileRepository(this._db);
+
+  final Database _db;
+
+  @override
+  Future<List<MobileProfile>> list() async {
+    final rows = _db.select(
+      'SELECT id, name, created_at, updated_at, browser_profile_ref, '
+      'device_profile_ref, network_route_ref, status, metadata '
+      'FROM profiles ORDER BY created_at, id',
+    );
+    return rows.map(_fromRow).toList(growable: false);
+  }
+
+  @override
+  Future<MobileProfile?> findById(String id) async {
+    final rows = _db.select(
+      'SELECT id, name, created_at, updated_at, browser_profile_ref, '
+      'device_profile_ref, network_route_ref, status, metadata '
+      'FROM profiles WHERE id = ?',
+      [id],
+    );
+    return rows.isEmpty ? null : _fromRow(rows.first);
+  }
+
+  @override
+  Future<void> save(MobileProfile profile) async {
+    if (profile.id.trim().isEmpty) {
+      throw ArgumentError.value(profile.id, 'profile.id', '不能为空');
+    }
+    final stmt = _db.prepare(
+      'INSERT INTO profiles (id, name, created_at, updated_at, browser_profile_ref, '
+      'device_profile_ref, network_route_ref, status, metadata) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+      'ON CONFLICT(id) DO UPDATE SET name = excluded.name, '
+      'updated_at = excluded.updated_at, status = excluded.status, '
+      'metadata = excluded.metadata',
+    );
+    try {
+      stmt.execute([
+        profile.id,
+        profile.name,
+        _formatDate(profile.createdAt),
+        _formatDate(profile.updatedAt),
+        profile.browserProfileRef,
+        profile.deviceProfileRef,
+        profile.networkRouteRef,
+        profile.status.name,
+        profile.metadata.isEmpty ? '{}' : jsonEncode(profile.metadata),
+      ]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    final stmt = _db.prepare('DELETE FROM profiles WHERE id = ?');
+    try {
+      stmt.execute([id]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  static MobileProfile _fromRow(Row row) {
+    final metadataRaw = row['metadata'] as String;
+    return MobileProfile(
+      id: row['id'] as String,
+      name: row['name'] as String,
+      createdAt: _parseDate(row['created_at'] as String),
+      updatedAt: _parseDate(row['updated_at'] as String),
+      browserProfileRef: row['browser_profile_ref'] as String,
+      deviceProfileRef: row['device_profile_ref'] as String,
+      networkRouteRef: row['network_route_ref'] as String,
+      status: ProfileStatus.values.byName(row['status'] as String),
+      metadata: _decodeMetadata(metadataRaw),
+    );
+  }
+}
+
+final class SqliteDeviceProfileRepository implements DeviceProfileRepository {
+  SqliteDeviceProfileRepository(this._db);
+
+  final Database _db;
+
+  @override
+  Future<List<DeviceProfile>> list() async {
+    final rows = _db.select('SELECT document FROM device_profiles ORDER BY id');
+    return rows.map((r) => ProfileCodec.decodeDevice(r['document'] as String))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<DeviceProfile?> findById(String id) async {
+    final rows = _db.select(
+      'SELECT document FROM device_profiles WHERE id = ?',
+      [id],
+    );
+    return rows.isEmpty ? null : ProfileCodec.decodeDevice(rows.first['document'] as String);
+  }
+
+  @override
+  Future<void> save(DeviceProfile profile) async {
+    if (profile.id.trim().isEmpty) {
+      throw ArgumentError.value(profile.id, 'deviceProfile.id', '不能为空');
+    }
+    final stmt = _db.prepare(
+      'INSERT INTO device_profiles (id, name, document) VALUES (?, ?, ?) '
+      'ON CONFLICT(id) DO UPDATE SET name = excluded.name, document = excluded.document',
+    );
+    try {
+      stmt.execute([profile.id, profile.name, ProfileCodec.encodeDevice(profile)]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    final stmt = _db.prepare('DELETE FROM device_profiles WHERE id = ?');
+    try {
+      stmt.execute([id]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+}
+
+final class SqliteNetworkRouteRepository implements NetworkRouteRepository {
+  SqliteNetworkRouteRepository(this._db);
+
+  final Database _db;
+
+  @override
+  Future<List<NetworkRoute>> list() async {
+    final rows = _db.select('SELECT document FROM network_routes ORDER BY id');
+    return rows.map((r) => ProfileCodec.decodeRoute(r['document'] as String))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<NetworkRoute?> findById(String id) async {
+    final rows = _db.select('SELECT document FROM network_routes WHERE id = ?', [id]);
+    return rows.isEmpty ? null : ProfileCodec.decodeRoute(rows.first['document'] as String);
+  }
+
+  @override
+  Future<void> save(NetworkRoute route) async {
+    if (route.id.trim().isEmpty) {
+      throw ArgumentError.value(route.id, 'networkRoute.id', '不能为空');
+    }
+    final stmt = _db.prepare(
+      'INSERT INTO network_routes (id, name, provider, document) VALUES (?, ?, ?, ?) '
+      'ON CONFLICT(id) DO UPDATE SET name = excluded.name, '
+      'provider = excluded.provider, document = excluded.document',
+    );
+    try {
+      stmt.execute([route.id, route.name, route.provider.name, ProfileCodec.encodeRoute(route)]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    final stmt = _db.prepare('DELETE FROM network_routes WHERE id = ?');
+    try {
+      stmt.execute([id]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+}
+
+final class SqliteActiveRuntimeRepository implements ActiveRuntimeRepository {
+  SqliteActiveRuntimeRepository(this._db);
+
+  final Database _db;
+
+  @override
+  Future<RuntimeInstance?> loadActive(String profileId) async {
+    final rows = _db.select(
+      'SELECT id, profile_id, route_id, provider_instance_id, generation, '
+      'started_at, stopped_at, status FROM runtime_instances '
+      'WHERE profile_id = ? AND stopped_at IS NULL '
+      'ORDER BY generation DESC LIMIT 1',
+      [profileId],
+    );
+    return rows.isEmpty ? null : _fromRow(rows.first);
+  }
+
+  @override
+  Future<void> save(RuntimeInstance runtime) async {
+    final active = await loadActive(runtime.profileId);
+    if (active != null &&
+        active.id != runtime.id &&
+        active.generation > runtime.generation) {
+      throw StateError('拒绝旧 runtime 覆盖新 runtime');
+    }
+    final stmt = _db.prepare(
+      'INSERT INTO runtime_instances (id, profile_id, route_id, provider_instance_id, '
+      'generation, started_at, stopped_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?) '
+      'ON CONFLICT(id) DO UPDATE SET stopped_at = excluded.stopped_at, '
+      'status = excluded.status',
+    );
+    try {
+      stmt.execute([
+        runtime.id,
+        runtime.profileId,
+        runtime.routeId,
+        runtime.providerInstanceId,
+        runtime.generation,
+        _formatDate(runtime.startedAt),
+        runtime.stoppedAt == null ? null : _formatDate(runtime.stoppedAt!),
+        runtime.status.name,
+      ]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  @override
+  Future<void> clear(String profileId, {String? runtimeId}) async {
+    final stmt = runtimeId == null
+        ? _db.prepare(
+            'UPDATE runtime_instances SET stopped_at = ?, status = ? '
+            'WHERE profile_id = ? AND stopped_at IS NULL',
+          )
+        : _db.prepare(
+            'UPDATE runtime_instances SET stopped_at = ?, status = ? '
+            'WHERE profile_id = ? AND id = ? AND stopped_at IS NULL',
+          );
+    try {
+      final now = _formatDate(DateTime.now().toUtc());
+      if (runtimeId == null) {
+        stmt.execute([now, NetworkRouteStatus.stopped.name, profileId]);
+      } else {
+        stmt.execute([now, NetworkRouteStatus.stopped.name, profileId, runtimeId]);
+      }
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  /// 全量历史实例（含已停止），用于审计与测试。
+  Future<List<RuntimeInstance>> listAll(String profileId) async {
+    final rows = _db.select(
+      'SELECT id, profile_id, route_id, provider_instance_id, generation, '
+      'started_at, stopped_at, status FROM runtime_instances '
+      'WHERE profile_id = ? ORDER BY generation',
+      [profileId],
+    );
+    return rows.map(_fromRow).toList(growable: false);
+  }
+
+  static RuntimeInstance _fromRow(Row row) {
+    final stoppedAt = row['stopped_at'];
+    return RuntimeInstance(
+      id: row['id'] as String,
+      profileId: row['profile_id'] as String,
+      routeId: row['route_id'] as String,
+      providerInstanceId: row['provider_instance_id'] as String,
+      generation: row['generation'] as int,
+      startedAt: _parseDate(row['started_at'] as String),
+      stoppedAt: stoppedAt == null ? null : _parseDate(stoppedAt as String),
+      status: NetworkRouteStatus.values.byName(row['status'] as String),
+    );
+  }
+}
