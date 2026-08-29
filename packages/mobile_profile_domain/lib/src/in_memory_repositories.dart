@@ -10,7 +10,11 @@ final class InMemoryMobileProfileRepository implements MobileProfileRepository {
   @override
   Future<List<MobileProfile>> list() async {
     final result = _profiles.values.toList(growable: false);
-    result.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    // 与 MobileProfileService.list 的排序契约一致：createdAt 优先，id 兜底。
+    result.sort((a, b) {
+      final byTime = a.createdAt.compareTo(b.createdAt);
+      return byTime != 0 ? byTime : a.id.compareTo(b.id);
+    });
     return result;
   }
 

@@ -1,4 +1,17 @@
-enum ProfileStatus { created, ready, starting, running, stopping, error, degraded }
+/// unknown / recovering 只出现在崩溃恢复流程中：
+/// 持久化的 running 等状态在进程死亡后不再可信，必须先降级为 unknown，
+/// 再进入 recovering 清理，最终回到 ready。正常运行不使用这两个状态。
+enum ProfileStatus {
+  created,
+  ready,
+  starting,
+  running,
+  stopping,
+  error,
+  degraded,
+  unknown,
+  recovering,
+}
 
 enum CapabilityState { controlled, derived, observed, unsupported }
 
@@ -16,6 +29,7 @@ final class MobileProfile {
     required this.deviceProfileRef,
     required this.networkRouteRef,
     required this.status,
+    this.metadata = const <String, String>{},
     this.schemaVersion = 1,
   });
 
@@ -27,12 +41,16 @@ final class MobileProfile {
   final String deviceProfileRef;
   final String networkRouteRef;
   final ProfileStatus status;
+
+  /// 纯文本键值对，只存展示与排序类附加信息；机密数据一律走安全存储。
+  final Map<String, String> metadata;
   final int schemaVersion;
 
   MobileProfile copyWith({
     String? name,
     DateTime? updatedAt,
     ProfileStatus? status,
+    Map<String, String>? metadata,
   }) {
     return MobileProfile(
       id: id,
@@ -43,6 +61,7 @@ final class MobileProfile {
       deviceProfileRef: deviceProfileRef,
       networkRouteRef: networkRouteRef,
       status: status ?? this.status,
+      metadata: metadata ?? this.metadata,
       schemaVersion: schemaVersion,
     );
   }

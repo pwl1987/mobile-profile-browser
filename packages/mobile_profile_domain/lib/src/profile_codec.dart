@@ -18,6 +18,7 @@ final class ProfileCodec {
         'deviceProfileRef': profile.deviceProfileRef,
         'networkRouteRef': profile.networkRouteRef,
         'status': profile.status.name,
+        'metadata': profile.metadata,
       });
 
   static MobileProfile decodeProfile(String source) {
@@ -34,6 +35,7 @@ final class ProfileCodec {
       deviceProfileRef: _requiredString(value, 'deviceProfileRef'),
       networkRouteRef: _requiredString(value, 'networkRouteRef'),
       status: _enumByName(ProfileStatus.values, _requiredString(value, 'status'), 'status'),
+      metadata: _optionalStringMap(value, 'metadata'),
       schemaVersion: _requiredInt(value, 'schemaVersion'),
     );
   }
@@ -148,6 +150,85 @@ final class ProfileCodec {
     );
   }
 
+  static String encodeDevice(DeviceProfile device) => jsonEncode({
+        'id': device.id,
+        'name': device.name,
+        'deviceFamily': device.deviceFamily,
+        'model': device.model,
+        'regionalModel': device.regionalModel,
+        'androidVersion': device.androidVersion,
+        'browserCompatibility': device.browserCompatibility,
+        'mainDisplay': _encodeDisplay(device.mainDisplay),
+        'coverDisplay': _encodeDisplay(device.coverDisplay),
+        'posture': device.posture.name,
+        'locale': device.locale,
+        'timezone': device.timezone,
+        'hardwareConcurrency': device.hardwareConcurrency,
+        'deviceMemoryGb': device.deviceMemoryGb,
+        'maxTouchPoints': device.maxTouchPoints,
+        'clientHintsState': device.clientHintsState.name,
+        'webglState': device.webglState.name,
+      });
+
+  static DeviceProfile decodeDevice(String source) {
+    final value = jsonDecode(source);
+    if (value is! Map<String, dynamic>) {
+      throw const FormatException('设备配置 JSON 顶层必须是对象');
+    }
+    return DeviceProfile(
+      id: _requiredString(value, 'id'),
+      name: _requiredString(value, 'name'),
+      deviceFamily: value['deviceFamily'] as String?,
+      model: value['model'] as String?,
+      regionalModel: value['regionalModel'] as String?,
+      androidVersion: value['androidVersion'] as String?,
+      browserCompatibility: value['browserCompatibility'] as String?,
+      mainDisplay: _decodeDisplay(value['mainDisplay'], 'mainDisplay'),
+      coverDisplay: _decodeDisplay(value['coverDisplay'], 'coverDisplay'),
+      posture: _enumByName(FoldablePosture.values, _requiredString(value, 'posture'), 'posture'),
+      locale: value['locale'] as String?,
+      timezone: value['timezone'] as String?,
+      hardwareConcurrency: _optionalInt(value, 'hardwareConcurrency'),
+      deviceMemoryGb: _optionalDouble(value, 'deviceMemoryGb'),
+      maxTouchPoints: _optionalInt(value, 'maxTouchPoints'),
+      clientHintsState: _enumByName(
+          CapabilityState.values, _requiredString(value, 'clientHintsState'), 'clientHintsState'),
+      webglState:
+          _enumByName(CapabilityState.values, _requiredString(value, 'webglState'), 'webglState'),
+    );
+  }
+
+  static Map<String, Object?>? _encodeDisplay(DisplayProfile? display) {
+    if (display == null) return null;
+    return <String, Object?>{
+      'surface': display.surface.name,
+      'resolutionWidth': display.resolutionWidth,
+      'resolutionHeight': display.resolutionHeight,
+      'viewportWidth': display.viewportWidth,
+      'viewportHeight': display.viewportHeight,
+      'devicePixelRatio': display.devicePixelRatio,
+      'refreshRateHz': display.refreshRateHz,
+      'touchSamplingRateHz': display.touchSamplingRateHz,
+    };
+  }
+
+  static DisplayProfile? _decodeDisplay(Object? raw, String field) {
+    if (raw == null) return null;
+    if (raw is! Map) throw FormatException('$field 必须是对象');
+    final value = raw.cast<String, dynamic>();
+    return DisplayProfile(
+      surface:
+          _enumByName(DisplaySurface.values, _requiredString(value, 'surface'), '$field.surface'),
+      resolutionWidth: _requiredInt(value, 'resolutionWidth'),
+      resolutionHeight: _requiredInt(value, 'resolutionHeight'),
+      viewportWidth: _optionalInt(value, 'viewportWidth'),
+      viewportHeight: _optionalInt(value, 'viewportHeight'),
+      devicePixelRatio: _optionalDouble(value, 'devicePixelRatio'),
+      refreshRateHz: _optionalDouble(value, 'refreshRateHz'),
+      touchSamplingRateHz: _optionalDouble(value, 'touchSamplingRateHz'),
+    );
+  }
+
   static String _requiredString(Map<String, dynamic> map, String key) {
     final value = map[key];
     if (value is! String || value.isEmpty) {
@@ -181,6 +262,28 @@ final class ProfileCodec {
     final value = map[key];
     if (value is! Map) throw FormatException('$key 必须是对象');
     return value.cast<String, dynamic>();
+  }
+
+  static Map<String, String> _optionalStringMap(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return const <String, String>{};
+    if (value is! Map) throw FormatException('$key 必须是对象');
+    return value.map((k, v) => MapEntry(k as String, v as String));
+  }
+
+  static int? _optionalInt(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return null;
+    if (value is! int) throw FormatException('$key 必须是整数');
+    return value;
+  }
+
+  static double? _optionalDouble(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return null;
+    if (value is num && value is! int) return value.toDouble();
+    if (value is int) return value.toDouble();
+    throw FormatException('$key 必须是数值');
   }
 
   static T _enumByName<T extends Enum>(List<T> values, String name, String field) {
