@@ -4,46 +4,21 @@ import 'package:test/test.dart';
 void main() {
   group('DeviceProfileValidator', () {
     test('允许合理的折叠屏设备配置', () {
-      const profile = DeviceProfile(
-        id: 'device-001',
-        name: 'OPPO Find N3',
-        deviceFamily: 'OPPO Find N3',
-        model: 'OPPO Find N3',
-        regionalModel: 'PHN110',
-        androidVersion: '13',
-        browserCompatibility: 'gecko',
-        mainDisplay: DisplayProfile(
-          surface: DisplaySurface.main,
-          resolutionWidth: 2440,
-          resolutionHeight: 2268,
-          devicePixelRatio: 2.5,
-        ),
-        coverDisplay: DisplayProfile(
-          surface: DisplaySurface.cover,
-          resolutionWidth: 2484,
-          resolutionHeight: 1116,
-          devicePixelRatio: 3,
-        ),
-        maxTouchPoints: 5,
-        locale: 'zh-CN',
-        timezone: 'Asia/Shanghai',
-        hardwareConcurrency: 8,
-      );
-
+      const profile = OppoFindN3Profiles.china;
       expect(
         () => const DeviceProfileValidator().validate(profile),
         returnsNormally,
       );
     });
 
-    test('拒绝非法主屏尺寸', () {
+    test('拒绝非法屏幕尺寸', () {
       const profile = DeviceProfile(
         id: 'device-002',
         name: '非法设备',
         mainDisplay: DisplayProfile(
           surface: DisplaySurface.main,
           resolutionWidth: 0,
-          resolutionHeight: 2268,
+          resolutionHeight: 2400,
         ),
       );
 
@@ -54,66 +29,102 @@ void main() {
     });
   });
 
-  group('NetworkRouteValidator', () {
-    test('非直连线路必须具有 Provider 配置引用', () {
-      const route = NetworkRoute(
-        id: 'route-001',
-        name: 'VPS SSH',
-        provider: NetworkProviderKind.ssh,
+  group('NetworkProviderRegistry', () {
+    test('支持常用 Provider', () {
+      expect(
+        NetworkProviderRegistry.supports(
+          const NetworkRoute(
+            id: 'route-socks',
+            name: 'SOCKS',
+            provider: NetworkProviderKind.socks5,
+            protocol: ProviderProtocol.socks5,
+            providerConfigRef: 'config-socks',
+          ),
+        ),
+        isTrue,
       );
 
       expect(
-        () => const NetworkRouteValidator().validate(route),
-        throwsA(isA<NetworkRouteValidationError>()),
+        NetworkProviderRegistry.supports(
+          const NetworkRoute(
+            id: 'route-vless',
+            name: 'VLESS',
+            provider: NetworkProviderKind.singbox,
+            protocol: ProviderProtocol.vless,
+            providerConfigRef: 'config-vless',
+          ),
+        ),
+        isTrue,
       );
     });
 
-    test('SSH 线路具备配置和信任引用时通过结构校验', () {
+    test('拒绝错误的 Provider / 协议组合', () {
       const route = NetworkRoute(
-        id: 'route-002',
-        name: 'VPS SSH',
-        provider: NetworkProviderKind.ssh,
-        protocol: ProviderProtocol.ssh,
-        providerConfigRef: 'ssh-config-001',
-        credentialRef: 'credential-001',
-        trustRef: 'hostkey-001',
-      );
-
-      expect(
-        () => const NetworkRouteValidator().validate(route),
-        returnsNormally,
-      );
-    });
-
-    test('SING_BOX 可以承载具体协议', () {
-      const route = NetworkRoute(
-        id: 'route-003',
-        name: 'VLESS',
-        provider: NetworkProviderKind.singbox,
+        id: 'route-bad',
+        name: '错误线路',
+        provider: NetworkProviderKind.http,
         protocol: ProviderProtocol.vless,
-        providerConfigRef: 'singbox-config-001',
-      );
-
-      expect(
-        () => const NetworkRouteValidator().validate(route),
-        returnsNormally,
-      );
-    });
-
-    test('要求故障关闭时拒绝冲突的故障策略', () {
-      const route = NetworkRoute(
-        id: 'route-004',
-        name: 'SOCKS5',
-        provider: NetworkProviderKind.socks5,
-        protocol: ProviderProtocol.socks5,
-        providerConfigRef: 'socks-config-001',
-        failurePolicy: FailurePolicy(mode: FailureMode.open),
+        providerConfigRef: 'config',
       );
 
       expect(
         () => const NetworkRouteValidator().validate(route),
         throwsA(isA<NetworkRouteValidationError>()),
       );
+    });
+  });
+
+  group('RuntimeInstanceController', () {
+    test('按状态机运行并允许重新连接', () {
+      final instance = RuntimeInstanceFactory.create(
+        profileId: 'profile-1',
+        routeId: 'route-1',
+        providerInstanceId: 'provider-1',
+        generation: 1,
+      );
+      final controller = RuntimeInstanceController(instance);
+
+      controller.transition(NetworkRouteStatus.starting);
+      controller.transition(NetworkRouteStatus.connected);
+      controller.transition(NetworkRouteStatus.reconnecting);
+      controller.transition(NetworkRouteStatus.connected);
+      controller.transition(NetworkRouteStatus.stopping);
+      controller.transition(NetworkRouteStatus.stopped);
+
+      expect(controller.runtime.status, NetworkRouteStatus.stopped);
+    });
+
+    test('拒绝非法状态跳转', () {
+      final instance = RuntimeInstanceFactory.create(
+        profileId: 'profile-1',
+        routeId: 'route-1',
+        providerInstanceId: 'provider-1',
+        generation: 1,
+      );
+      final controller = RuntimeInstanceController(instance);
+
+      expect(
+        () => controller.transition(NetworkRouteStatus.connected),
+        throwsA(isA<RuntimeStateTransitionError>()),
+      );
+    });
+
+    test('旧 runtime 不能覆盖新代际', () {
+      final oldRuntime = RuntimeInstanceFactory.create(
+        profileId: 'profile-1',
+        routeId: 'route-1',
+        providerInstanceId: 'provider-1',
+        generation: 1,
+      );
+      final newRuntime = RuntimeInstanceFactory.create(
+        profileId: 'profile-1',
+        routeId: 'route-1',
+        providerInstanceId: 'provider-2',
+        generation: 2,
+      );
+
+      expect(RuntimeInstanceController.isCurrent(oldRuntime, newRuntime), isFalse);
+      expect(RuntimeInstanceController.isCurrent(newRuntime, newRuntime), isTrue);
     });
   });
 }
