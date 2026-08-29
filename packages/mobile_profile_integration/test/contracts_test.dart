@@ -13,14 +13,12 @@ void main() {
     expect(handle.storageNamespace, isNotEmpty);
   });
 
-  test('网络 Runtime 句柄只绑定线路', () {
-    const handle = NetworkRuntimeHandle(
-      id: 'runtime-provider-001',
-      routeId: 'route-001',
-    );
+  test('网络 Runtime 适配器实现 Domain Runtime 契约', () {
+    final adapter = _FakeNetworkRuntime();
+    final NetworkRuntime domainPort = adapter;
 
-    expect(handle.id, 'runtime-provider-001');
-    expect(handle.routeId, 'route-001');
+    expect(domainPort, same(adapter));
+    expect(adapter, isA<NetworkRuntimeAdapter>());
   });
 
   test('集成契约不要求具体 Provider 实现', () {
@@ -36,4 +34,26 @@ void main() {
 
     expect(NetworkProviderRegistry.supports(route), isTrue);
   });
+}
+
+final class _FakeNetworkRuntime implements NetworkRuntimeAdapter {
+  @override
+  Future<NetworkRouteStatus> start(
+    RuntimeInstance runtime,
+    NetworkRoute route,
+  ) async {
+    return NetworkRouteStatus.connected;
+  }
+
+  @override
+  Future<NetworkHealth> health(RuntimeInstance runtime) async {
+    return const NetworkHealth(
+      reachable: true,
+      latencyMs: 1,
+      detail: 'fake',
+    );
+  }
+
+  @override
+  Future<void> stop(RuntimeInstance runtime) async {}
 }
