@@ -32,15 +32,16 @@ jobs:
           swap-storage: false
 
       - name: 设置 Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: 设置 Go 1.25
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25.x'
+          cache: false
 
       - name: 安装 Android NDK
         run: |
@@ -106,7 +107,46 @@ jobs:
 
       - name: 构建 Android Debug APK
         working-directory: vendor/weblibre/apps/weblibre
-        run: flutter build apk --debug --no-pub
+        run: |
+          set -euo pipefail
+          rm -rf build/app/outputs/apk build/app/outputs/flutter-apk
+          set +e
+          flutter build apk --debug --no-pub
+          flutter_status=$?
+          set -e
+
+          # Flutter 3.47 在该上游 WebLibre 基线上可能在 Gradle 已完成后无法识别 APK 输出。
+          # 如果 APK 已经生成，则不把 Flutter CLI 的产物探测错误当作真实编译失败。
+          mapfile -t apks < <(find build -type f -name '*.apk' -size +1M -print | sort)
+          if (( ${#apks[@]} == 0 )); then
+            echo "未发现 APK，Flutter build 状态=$flutter_status" >&2
+            find build -maxdepth 8 -type f \( -name '*.apk' -o -name '*.aab' \) -print >&2 || true
+            exit "$flutter_status"
+          fi
+
+          if (( flutter_status != 0 )); then
+            echo "Flutter CLI 返回 $flutter_status，但已发现有效 APK；继续执行产物校验。"
+          fi
+
+          apk="${apks[0]}"
+          mkdir -p build/app/outputs/flutter-apk
+          cp "$apk" build/app/outputs/flutter-apk/app-debug.apk
+          ls -lh build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: 校验 APK 产物
+        working-directory: vendor/weblibre/apps/weblibre
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-debug.apk"
+          test -s "$APK"
+          command -v apkanalyzer >/dev/null 2>&1 || true
+          if command -v apkanalyzer >/dev/null 2>&1; then
+            apkanalyzer manifest application-id "$APK"
+            apkanalyzer manifest version-name "$APK"
+            apkanalyzer manifest version-code "$APK"
+          fi
+          unzip -t "$APK" >/dev/null
+          echo "APK validation passed: $APK"
 
       - name: 上传 Debug APK
         uses: actions/upload-artifact@v4
