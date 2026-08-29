@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 准备 WebLibre 工作树：M1 只验证纯上游 Android 基线，不注入本项目业务包。
-# 业务层将在 APK 基线成立后，通过独立集成阶段接入。
+# 准备 WebLibre M1 工作树：只验证固定的、可复现的上游 Android 基线。
+# 业务层在 APK 基线稳定后再接入，避免把基线问题与产品代码问题混在一起。
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEBLIBRE_DIR="$ROOT_DIR/vendor/weblibre"
 APP_DIR="$WEBLIBRE_DIR/apps/weblibre"
-LOCKED_COMMIT="dc74be456efab51823bfc913114abb77af5c231c"
+LOCKED_COMMIT="b4721ae6b34aea65e589417b3a64244cc14dbb91"
 
 actual_commit="$(git -C "$WEBLIBRE_DIR" rev-parse HEAD)"
 if [[ "$actual_commit" != "$LOCKED_COMMIT" ]]; then
@@ -15,7 +15,7 @@ if [[ "$actual_commit" != "$LOCKED_COMMIT" ]]; then
   exit 1
 fi
 
-# 上游仓库通过空目录承载可选静态资源；确保 Flutter 资源声明不会因缺目录失败。
+# 上游把若干可选静态资源目录声明为 Flutter assets；空目录不会进入 Git，CI 中显式创建。
 mkdir -p "$APP_DIR/assets/quotes" "$APP_DIR/assets/sites" "$APP_DIR/assets/ublock"
 
 echo "WebLibre M1 纯上游工作树准备完成：$LOCKED_COMMIT"
