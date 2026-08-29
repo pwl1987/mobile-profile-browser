@@ -48,9 +48,10 @@ final class _FakeNetworkRuntime implements NetworkRuntimeAdapter {
   @override
   Future<NetworkHealth> health(RuntimeInstance runtime) async {
     return const NetworkHealth(
-      reachable: true,
-      latencyMs: 1,
-      detail: 'fake',
+      connection: NetworkRouteStatus.connected,
+      health: NetworkHealthState.healthy,
+      traffic: TrafficState.allowed,
+      leak: LeakState.safe,
     );
   }
 
