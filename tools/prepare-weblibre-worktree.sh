@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 准备 WebLibre M1 工作树：只验证固定的、可复现的上游 Android 基线。
-# 业务层在 APK 基线稳定后再接入，避免把基线问题与产品代码问题混在一起。
+# M1 目标：先证明固定 WebLibre Android 基线可以重复构建出 Debug APK。
+# 业务层与 Provider 注入在基线 Gate 通过后再接入。
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEBLIBRE_DIR="$ROOT_DIR/vendor/weblibre"
