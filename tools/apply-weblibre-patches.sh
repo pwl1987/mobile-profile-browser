@@ -8,7 +8,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEBLIBRE_DIR="$ROOT_DIR/vendor/weblibre"
 PATCH_DIR="$ROOT_DIR/patches/weblibre"
 
-if [[ ! -d "$WEBLIBRE_DIR/.git" ]]; then
+if ! git -C "$WEBLIBRE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "错误：WebLibre 子模块未初始化：$WEBLIBRE_DIR" >&2
   exit 1
 fi
@@ -28,7 +28,7 @@ for patch in "$PATCH_DIR"/*.patch; do
     continue
   fi
 
-  # 对已经应用的补丁使用反向检查判断，而不是根据某个文件内容关键词猜测。
+  # 对已经应用的补丁使用反向检查判断，而不是依赖某个文件关键词。
   if git apply --reverse --check "$patch" >/dev/null 2>&1; then
     echo "补丁已应用：$(basename "$patch")"
     continue
