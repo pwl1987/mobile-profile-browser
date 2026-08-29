@@ -33,7 +33,7 @@ jobs:
           test "$(flutter --version --machine | python -c "import json,sys; print(json.load(sys.stdin)['dartSdkVersion'])")" = "3.8.1"
 
       - name: 核验 WebLibre 上游基线
-        run: ./tools/import-weblibre.sh
+        run: bash ./tools/import-weblibre.sh
 
       - name: 获取 WebLibre 依赖
         working-directory: vendor/weblibre/apps/weblibre
