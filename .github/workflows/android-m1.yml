@@ -35,6 +35,9 @@ jobs:
       - name: 核验 WebLibre 上游基线
         run: bash ./tools/import-weblibre.sh
 
+      - name: 应用本项目 WebLibre 补丁层
+        run: bash ./tools/apply-weblibre-patches.sh
+
       - name: 获取 WebLibre 依赖
         working-directory: vendor/weblibre
         run: dart pub get
