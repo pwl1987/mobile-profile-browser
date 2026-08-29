@@ -1,0 +1,39 @@
+name: 集成契约测试
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  integration-contracts:
+    name: 浏览器与网络集成契约
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.1'
+
+      - name: 获取领域层依赖
+        working-directory: packages/mobile_profile_domain
+        run: dart pub get
+
+      - name: 获取集成层依赖
+        working-directory: packages/mobile_profile_integration
+        run: dart pub get
+
+      - name: 集成层静态分析
+        working-directory: packages/mobile_profile_integration
+        run: dart analyze
+
+      - name: 集成层单元测试
+        working-directory: packages/mobile_profile_integration
+        run: dart test
