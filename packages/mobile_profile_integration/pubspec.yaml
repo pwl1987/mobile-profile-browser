@@ -1,0 +1,16 @@
+name: mobile_profile_integration
+description: Mobile Profile Browser 与浏览器底座、网络运行时之间的适配契约。
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  mobile_profile_domain:
+    path: ../mobile_profile_domain
+
+dev_dependencies:
+  test: ^1.26.0
+
+# 本包只定义跨层接口，不依赖 Flutter、GeckoView、sing-box 或 Android API。
