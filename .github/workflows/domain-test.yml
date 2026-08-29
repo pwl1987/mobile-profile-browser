@@ -1,0 +1,27 @@
+name: 领域包测试
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 安装 Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - name: 获取依赖
+        working-directory: packages/mobile_profile_domain
+        run: dart pub get
+      - name: 静态分析
+        working-directory: packages/mobile_profile_domain
+        run: dart analyze
+      - name: 单元测试
+        working-directory: packages/mobile_profile_domain
+        run: dart test
