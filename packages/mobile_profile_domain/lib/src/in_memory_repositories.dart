@@ -31,6 +31,54 @@ final class InMemoryMobileProfileRepository implements MobileProfileRepository {
   }
 }
 
+final class InMemoryDeviceProfileRepository implements DeviceProfileRepository {
+  final Map<String, DeviceProfile> _profiles = <String, DeviceProfile>{};
+
+  @override
+  Future<List<DeviceProfile>> list() async =>
+      _profiles.values.toList(growable: false);
+
+  @override
+  Future<DeviceProfile?> findById(String id) async => _profiles[id];
+
+  @override
+  Future<void> save(DeviceProfile profile) async {
+    if (profile.id.trim().isEmpty) {
+      throw ArgumentError.value(profile.id, 'deviceProfile.id', '不能为空');
+    }
+    _profiles[profile.id] = profile;
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    _profiles.remove(id);
+  }
+}
+
+final class InMemoryNetworkRouteRepository implements NetworkRouteRepository {
+  final Map<String, NetworkRoute> _routes = <String, NetworkRoute>{};
+
+  @override
+  Future<List<NetworkRoute>> list() async =>
+      _routes.values.toList(growable: false);
+
+  @override
+  Future<NetworkRoute?> findById(String id) async => _routes[id];
+
+  @override
+  Future<void> save(NetworkRoute route) async {
+    if (route.id.trim().isEmpty) {
+      throw ArgumentError.value(route.id, 'networkRoute.id', '不能为空');
+    }
+    _routes[route.id] = route;
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    _routes.remove(id);
+  }
+}
+
 final class InMemoryActiveRuntimeRepository implements ActiveRuntimeRepository {
   final Map<String, RuntimeInstance> _active = <String, RuntimeInstance>{};
 
