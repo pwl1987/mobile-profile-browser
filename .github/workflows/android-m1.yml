@@ -1,0 +1,55 @@
+name: M1 Android 浏览器底座
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  android-foundation:
+    name: WebLibre Android 基线
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库与子模块
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: 设置 Flutter 3.32.8
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.8'
+          channel: stable
+          cache: true
+
+      - name: 核验 Flutter / Dart 版本
+        run: |
+          flutter --version
+          test "$(flutter --version --machine | python -c "import json,sys; print(json.load(sys.stdin)['dartSdkVersion'])")" = "3.8.1"
+
+      - name: 核验 WebLibre 上游基线
+        run: ./tools/import-weblibre.sh
+
+      - name: 获取 WebLibre 依赖
+        working-directory: vendor/weblibre/apps/weblibre
+        run: flutter pub get
+
+      - name: 静态分析 WebLibre
+        working-directory: vendor/weblibre/apps/weblibre
+        run: flutter analyze
+
+      - name: 构建 Android Debug APK
+        working-directory: vendor/weblibre/apps/weblibre
+        run: flutter build apk --debug --no-pub
+
+      - name: 上传 Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-profile-browser-m1-debug
+          path: vendor/weblibre/apps/weblibre/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
