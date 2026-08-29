@@ -20,17 +20,17 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: 设置 Flutter 3.44.4
+      - name: 设置 Flutter 3.47.1
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.4'
+          flutter-version: '3.47.1'
           channel: stable
           cache: true
 
       - name: 核验 Flutter / Dart 版本
         run: |
           flutter --version
-          test "$(flutter --version --machine | python -c "import json,sys; print(json.load(sys.stdin)['dartSdkVersion'])")" = "3.12.2"
+          test "$(flutter --version --machine | python -c "import json,sys; print(json.load(sys.stdin)['dartSdkVersion'])")" = "3.13.1"
 
       - name: 核验 WebLibre 上游基线
         run: bash ./tools/import-weblibre.sh
