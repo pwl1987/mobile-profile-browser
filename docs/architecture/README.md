@@ -1,40 +1,48 @@
-# Architecture
+# 架构总览
 
-## Principles
+## 核心原则
 
-1. **Profile is the primary isolation boundary.**
-2. **Browser state, network identity, and device identity are separate domains.**
-3. **No hidden global mutable state may silently cross Profiles.**
-4. **A proxy is a transport service, not a fingerprint feature.**
-5. **Device profiles describe coherent combinations of values; they are not arbitrary randomizers.**
-6. **Upstream changes are imported deliberately and recorded.**
-7. **Every security-sensitive feature gets an acceptance test before release.**
+1. **Profile 是第一隔离边界。**
+2. **浏览器状态、网络身份、设备身份属于三个独立领域。**
+3. **禁止任何隐藏的全局可变状态在 Profile 之间静默共享。**
+4. **代理是网络传输能力，不是指纹能力。**
+5. **设备配置描述内部一致的参数组合，不是随机参数集合。**
+6. **上游代码必须经过明确审计后再导入，并记录来源版本。**
+7. **每项安全敏感功能在发布前必须有验收测试。**
+8. **项目文档默认使用中文；代码、API、协议和上游项目名称保留英文原文。**
 
-## Documents
+## 文档索引
 
-| Document | Purpose |
+| 文档 | 用途 |
 |---|---|
-| `v0.1-baseline.md` | Frozen scope and architecture boundaries |
-| `profile-model.md` | Profile schema, lifecycle, isolation |
-| `networking.md` | Proxy, SSH, TUN/VPN and leak boundaries |
+| `v0.1-baseline.md` | V0.1 范围、边界和冻结条件 |
+| `profile-model.md` | Profile 数据模型、生命周期和隔离契约 |
+| `networking.md` | 网络路由、代理、SSH、TUN/VPN 和泄漏边界 |
 
-## Dependency direction
+## 依赖方向
 
 ```text
 UI
  ↓
-Profile Application Service
+Profile 应用服务
  ↓
 Profile Store ───── Device Profile Store
  ↓
 Browser Runtime Adapter
  ↓
-Gecko / WebLibre upstream
+Gecko / WebLibre 上游
 
 Network Service
- ├─ Proxy abstraction
- ├─ SSH tunnel adapter
- └─ TUN/VPN adapter
+ ├─ Proxy 抽象
+ ├─ SSH Tunnel Adapter
+ └─ TUN/VPN Adapter
 ```
 
-The browser runtime must not own SSH credentials, and the UI must not directly manipulate browser storage paths.
+浏览器运行时不得持有 SSH 凭据；UI 不得直接操作浏览器存储目录。所有跨层调用必须通过明确的服务接口完成。
+
+## 架构决策规则
+
+- 优先复用成熟的 Gecko/WebLibre 能力，不重复造浏览器基础设施。
+- 对 Profile 隔离、网络路由、设备配置等核心能力，必须先定义契约，再写实现。
+- 如果上游实现与本项目隔离要求冲突，优先建立适配层，而不是在业务 UI 中打补丁。
+- 所有无法验证的“指纹伪装”能力不得作为已实现能力对外宣称。
