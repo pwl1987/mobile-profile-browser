@@ -13,19 +13,51 @@
 | Android | GitHub Actions Ubuntu runner 上的 Android 工具链；真机版本另行验收 |
 | WebLibre | `dc74be456efab51823bfc913114abb77af5c231c` |
 
-M1 采用 Flutter 3.47.1 / Dart 3.13.1。原因不是盲目追新，而是锁定的 WebLibre 工作区当前存在 `hooks_riverpod 3.4.2 → Dart ^3.12.0` 以及 `riverpod_generator 4.0.8 → analyzer ^13.0.0` 的依赖链；原先 Flutter 3.44.4 / Dart 3.12.2 在 SDK 自带的 `meta 1.18.0` 与 `analyzer 13.3.0` 所需 `meta ^1.18.3` 之间产生解析冲突。更高的稳定 Dart/Flutter 基线可让 SDK 自带依赖与该工具链正常对齐。Flutter/Dart 的当前版本映射以官方发布信息和实际 CI 解析结果为准。citeturn805746search0turn805746search7
+当前 M1 使用 Flutter 3.47.1 / Dart 3.13.1。该组合能够满足锁定 WebLibre 工作区的 Dart SDK 约束；具体依赖解析必须以 CI 实际结果为准。
 
 ## 版本选择原则
 
-1. 先满足锁定 WebLibre 工作区的实际 SDK/依赖约束；
-2. 优先选择正式 stable 版本，不使用测试版；
-3. 使用明确版本而不是 `stable` 浮动标签；
+1. 先满足锁定 WebLibre 工作区实际 SDK/依赖约束；
+2. 优先选择正式 stable 版本；
+3. 固定到明确版本，不使用浮动版本；
 4. 每次升级 Flutter 都必须重新执行依赖解析、静态分析和 Android 构建；
-5. 不修改上游源码来掩盖 SDK/依赖冲突，除非形成正式的、可审计的补丁。
+5. 不通过修改上游源码掩盖 SDK/依赖冲突，必要补丁必须进入本项目补丁层并可审计。
 
-## 为什么不使用上游 `.metadata`
+## 上游补丁层
 
-当前锁定的 WebLibre commit 中，`.metadata` 不能作为唯一构建依据。M1 根据工作区 `pubspec.yaml` 和真实依赖求解结果确定 Flutter/Dart 版本，并在 CI 中显式校验。
+本项目不直接提交修改后的 WebLibre 子模块内容，而是在：
+
+```text
+patches/weblibre/
+```
+
+维护针对固定上游 commit 的最小补丁。
+
+CI 顺序：
+
+```text
+检出子模块
+   ↓
+校验上游 commit
+   ↓
+应用本项目补丁
+   ↓
+依赖解析
+   ↓
+静态分析
+   ↓
+APK 构建
+```
+
+如果补丁无法正向或反向匹配，构建立即失败，避免上游升级后悄悄继续构建。
+
+## 当前已知兼容性补丁
+
+### material_ui / ColorScheme
+
+当前 WebLibre 锁定版本使用 `dynamic_color 2.x`，而其新版本已经迁移到独立的 `material_ui` 包。Flutter 3.47 环境下，`DynamicColorBuilder` 提供的 `ColorScheme` 与旧的 `package:flutter/material.dart` 类型可能出现不兼容。
+
+本项目维护单独补丁，使 `main.dart` 使用与 `dynamic_color` 当前 API 一致的 Material UI 类型，而不修改上游其他模块。
 
 ## M1 构建流程
 
@@ -35,6 +67,10 @@ M1 采用 Flutter 3.47.1 / Dart 3.13.1。原因不是盲目追新，而是锁定
 初始化 vendor/weblibre 子模块
         ↓
 校验 WebLibre commit
+        ↓
+应用 WebLibre 补丁层
+        ↓
+生成上游要求但源码树缺失的资源目录
         ↓
 安装 Flutter 3.47.1 / Dart 3.13.1
         ↓
