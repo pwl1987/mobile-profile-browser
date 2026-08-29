@@ -5,7 +5,7 @@ set -euo pipefail
 # 该脚本只用于开发环境；应用运行时绝不下载或更新第三方源码。
 
 UPSTREAM_URL="https://github.com/FaFre/WebLibre.git"
-UPSTREAM_COMMIT="dc74be456efab51823bfc913114abb77af5c231c"
+UPSTREAM_COMMIT="b4721ae6b34aea65e589417b3a64244cc14dbb91"
 SUBMODULE_PATH="vendor/weblibre"
 
 if ! command -v git >/dev/null 2>&1; then

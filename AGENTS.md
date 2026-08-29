@@ -55,7 +55,7 @@ README、架构文档、测试方案、Issue/PR、commit message 默认**中文*
 
 ## 已知坑
 
-1. **子模块基线已统一（2026-08-30）**：`vendor/weblibre` 锁定 `dc74be45`，git 索引、三个 tools 脚本与全部 CI 工作流一致。历史上曾出现 b4721ae6/dc74be45 双基线并存（仅差 1 个上游提交），导致 domain-quality 工作流长期红，已统一；任何脚本中的 commit 常量必须与 git 索引一致，升级上游时按 `docs/upstream/weblibre.md` 流程同步修改。
+1. **子模块基线已统一（2026-08-30）**：`vendor/weblibre` 锁定 `b4721ae6`，git 索引、三个 tools 脚本与全部 CI 工作流一致。曾出现 b4721ae6/dc74be45 双基线并存（差 1 个上游提交）导致 domain-quality 长期红；实测统一到 dc74be45 会让纯上游 `flutter analyze` 因 material_ui 1.1.0 类型冲突报错，故回退统一到 b4721ae6。任何脚本中的 commit 常量必须与 git 索引一致；升级上游按 `docs/upstream/weblibre.md` 流程执行。
 2. **Flutter 3.47 APK 产物探测误报**：Gradle 已产出 APK 时 flutter CLI 仍可能返回非零。CI 以"存在 >1MB 的 APK"判定成功，不要改回只信任退出码。
 3. 上游把 `assets/quotes`、`assets/sites`、`assets/ublock` 声明为 Flutter assets 但空目录不入 Git，构建前需 `prepare-weblibre-worktree.sh` 补建。
 4. 分支：`develop` 是实际工作线，`main` 滞后；CI 在 push/PR 到 main 和 develop 时触发。功能分支（如 `fix/ci-apk-build`）完成后合入 develop。
