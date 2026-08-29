@@ -1,0 +1,18 @@
+name: mobile_profile_storage
+description: Mobile Profile Browser 的 SQLite 持久化实现（schema 迁移、事务与仓储）。
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  mobile_profile_domain:
+    path: ../mobile_profile_domain
+  sqlite3: ^2.4.0
+
+dev_dependencies:
+  test: ^1.26.0
+
+# 本包只依赖 sqlite3 与领域契约；不依赖 Flutter、Android 或 WebLibre。
+# 与 Android 集成时通过 sqlite3_flutter_libs 打包原生库（M3+ 接入）。
