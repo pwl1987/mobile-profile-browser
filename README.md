@@ -11,9 +11,8 @@
 - 多 Profile 管理
 - Profile 级浏览数据隔离
 - Profile 级网络路由
-- SOCKS5 / HTTP 等代理能力
-- SSH 动态转发作为 Profile 网络出口
-- Android TUN/VPN 网络接管
+- Direct / HTTP / SOCKS5 / sing-box / SSH / WireGuard / VPN-TUN / Tor 等网络 Provider
+- VPS SSH 作为一种可选网络出口
 - 设备配置 Profile
 - 后续的浏览器指纹一致性研究
 - 安全存储、崩溃恢复、导入导出与自动化测试
@@ -22,33 +21,36 @@
 
 ## 当前状态
 
-项目处于 V0.1 架构与底座建设阶段。
+项目正在进行 **M1 浏览器底座集成**。
 
 当前上游基线：
 
 - 上游项目：WebLibre
 - 上游仓库：<https://github.com/FaFre/WebLibre>
 - 审计基线：`dc74be456efab51823bfc913114abb77af5c231c`
+- 上游集成方式：`vendor/weblibre` Git Submodule
 
 当前已经完成：
 
 - 中文优先项目文档规范
-- V0.1 架构基线
-- Profile 模型初稿
-- 网络与代理边界设计
-- 安全威胁模型
-- V0.1 验收矩阵
-- WebLibre 第一轮代码级底座审计
+- V0.1 架构与安全基线
+- MobileProfile / DeviceProfile / NetworkRoute 领域模型
+- Provider Registry / Runtime 生命周期模型
+- Repository 契约与测试用内存实现
+- OPPO Find N3 双屏设备模型
+- WebLibre 第一轮代码级审计
+- WebLibre 上游 commit 锁定
+- Android M1 可重复构建工作流
 
-当前进行中：
+当前正在推进：
 
-1. 固定 WebLibre 上游版本并建立可复现导入流程
-2. 验证 WebLibre Profile / Storage 隔离模型
-3. 验证 sing-box Profile 级代理能力
-4. 设计 `MobileProfile` 领域层
-5. 设计 `DeviceProfile` 与 `NetworkRoute`
-6. 设计 SSH → SOCKS5 → Profile 网络链路
-7. 建立 Android 真机验收环境
+1. WebLibre 依赖解析与 Android Debug APK 构建
+2. BrowserProfileAdapter
+3. WebLibre Profile / Gecko Runtime 映射
+4. Profile Storage 隔离验证
+5. Provider Runtime Adapter
+6. sing-box 网络接入
+7. OPPO Find N3 真机验收
 
 ## 核心原则
 
@@ -83,16 +85,14 @@ MobileProfile
 
 ### 3. 网络故障默认安全
 
-代理或 SSH 隧道异常时，不允许静默回落到真实网络。
-
-目标状态：
+对于用户选择的受保护线路，代理、SSH、VPN-TUN 或其他 Provider 异常时不得静默回落到真实网络。
 
 ```text
 Profile
   ↓
 NetworkRoute
   ↓
-Proxy / SSH
+Provider Runtime
   ↓
 健康检查
   ↓
@@ -106,12 +106,12 @@ NetworkRoute
   ↓
 FAIL CLOSED
   ↓
-阻断外网
+阻断受保护流量
 ```
 
 ### 4. 指纹必须保持一致性
 
-后续 Device/Fingerprint Engine 不采用简单随机字段拼接。
+Device/Fingerprint Engine 不采用简单随机字段拼接。
 
 设备配置、浏览器能力、屏幕参数、触控能力、语言、时区、Client Hints、WebGL 等必须遵循一致性模型，并明确区分：
 
@@ -120,14 +120,36 @@ FAIL CLOSED
 - `observed`：运行时观测
 - `unsupported`：当前无法可靠控制
 
+### 5. 身份最小暴露
+
+项目核心目标之一是减少不必要的真实身份暴露，但不宣称绝对匿名。
+
+重点关注：
+
+```text
+浏览状态身份
+设备表现身份
+网络身份
+应用/系统身份
+```
+
+每项能力必须通过真实引擎行为验证，不能因为 UI 配置存在就认定已经完成隔离或身份保护。
+
 ## 文档
 
 - [架构文档](docs/architecture/README.md)
 - [V0.1 架构基线](docs/architecture/v0.1-baseline.md)
-- [Profile 模型](docs/architecture/profile-model.md)
+- [M1 浏览器底座](docs/architecture/m1-browser-foundation.md)
+- [M1 构建环境](docs/architecture/m1-build-environment.md)
+- [M1 集成策略](docs/architecture/m1-integration-strategy.md)
+- [领域模型](docs/architecture/domain-model.md)
 - [网络架构](docs/architecture/networking.md)
+- [网络 Provider V2](docs/architecture/network-provider-v2.md)
+- [身份与隐私架构](docs/architecture/identity-privacy.md)
+- [OPPO Find N3](docs/devices/oppo-find-n3.md)
+- [VPS SSH 出口](docs/network/vps-ssh-exit.md)
 - [安全威胁模型](docs/security/threat-model.md)
-- [V0.1 验收矩阵](docs/testing/acceptance-matrix.md)
+- [验收矩阵](docs/testing/acceptance-matrix.md)
 
 ## 开发语言规范
 
