@@ -1,5 +1,4 @@
 diff --git a/apps/weblibre/pubspec.yaml b/apps/weblibre/pubspec.yaml
-index 042093d..0000000 100644
 --- a/apps/weblibre/pubspec.yaml
 +++ b/apps/weblibre/pubspec.yaml
 @@ -34,6 +34,10 @@ dependencies:
