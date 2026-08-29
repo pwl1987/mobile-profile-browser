@@ -1,10 +1,10 @@
-# Networking Architecture
+# 网络架构
 
-## Goal
+## 1. 目标
 
-Allow each Profile to reference an independent logical network route without coupling browser state to tunnel implementation.
+允许每个 Profile 引用独立的逻辑网络线路，同时让浏览器状态与具体隧道实现解耦。
 
-## Route model
+## 2. NetworkRoute 模型
 
 ```text
 NetworkRoute
@@ -17,9 +17,13 @@ NetworkRoute
 └── health_policy
 ```
 
-## SSH design
+Profile 不保存具体实现细节，只保存 `network_route_id`。
 
-The planned SSH mode is **SSH local dynamic forwarding (`-D`) to a local SOCKS5 endpoint**, managed by an Android-native tunnel service. The application should use a maintained SSH library rather than implementing the SSH protocol itself.
+## 3. SSH 方案
+
+计划中的 SSH 模式是 **SSH 本地动态转发（`-D`）→ 本地 SOCKS5 端点**。SSH 生命周期由 Android 原生网络服务管理。
+
+不要自行实现 SSH 协议，应采用维护中的成熟 SSH 库或现有网络运行时能力。
 
 ```text
 Profile
@@ -28,47 +32,51 @@ NetworkRoute(SSH_TUNNEL)
   ↓
 SSH Tunnel Service
   ↓
-local SOCKS5 endpoint
+本地 SOCKS5
   ↓
-proxy/TUN adapter
+Proxy / TUN Adapter
   ↓
-browser traffic
+浏览器流量
 ```
 
-The browser must not receive or persist the SSH private key. The tunnel service owns the credential reference and lifecycle.
+浏览器不得接触或持久化 SSH 私钥。隧道服务只持有安全凭据引用和运行所需的最小信息。
 
-## Important boundary
+## 4. 代理完整性
 
-A browser-level proxy setting does not automatically prove that every network request is routed through the proxy. Future acceptance tests must explicitly cover:
+浏览器设置了代理，并不能自动证明所有网络请求都经过代理。后续验收必须明确覆盖：
 
-- DNS resolution;
-- HTTP/HTTPS requests;
-- IPv4/IPv6;
-- WebRTC candidates;
-- redirects and downloads;
-- extension traffic where supported;
-- background browser services.
+- DNS 解析；
+- HTTP/HTTPS 请求；
+- IPv4/IPv6；
+- WebRTC Candidate；
+- 重定向和下载；
+- 在支持范围内的扩展流量；
+- 浏览器后台服务流量。
 
-## TUN/VPN
+## 5. TUN/VPN
 
-If engine-level proxy routing cannot guarantee complete per-Profile routing, a later implementation may use Android `VpnService` and a maintained TUN-to-proxy component. TUN routing is a system-level mechanism and must not be enabled implicitly without clear user consent.
+如果 Gecko/浏览器级代理无法保证完整的 Profile 级网络路由，后续可以采用 Android `VpnService` 与维护中的 TUN-to-Proxy 组件。
 
-## Failure policy
+TUN 是系统级网络机制，不应在没有明确用户授权的情况下自动启用。
 
-Default for a configured non-direct route:
+## 6. 故障策略
 
-**fail closed** when the user explicitly requests leak protection.
+对于用户明确要求防泄漏的非直连线路，默认：
 
-That means a dead SSH/proxy route must not silently fall back to the device's direct network. A separate user-visible option may allow fail-open for ordinary privacy use cases.
+**Fail Closed（故障关闭）**。
 
-## Observability
+也就是说 SSH/代理线路断开后，不得静默回落到设备真实网络。
 
-Expose only non-secret health information:
+普通隐私场景如果确有需要，可以提供用户明确可见的 Fail Open 选项；默认不启用。
 
-- route state;
-- tunnel connected/disconnected;
-- last successful connection time;
-- latency class;
-- byte counters if available.
+## 7. 可观测性
 
-Never log private keys, passwords, proxy credentials, authentication headers, cookies, or full URLs containing sensitive query data.
+只暴露非敏感的健康信息：
+
+- 线路状态；
+- 隧道已连接/已断开；
+- 最近一次成功连接时间；
+- 延迟等级；
+- 可用时的字节计数。
+
+严禁记录：私钥、密码、代理凭据、认证 Header、Cookie，以及包含敏感查询参数的完整 URL。
