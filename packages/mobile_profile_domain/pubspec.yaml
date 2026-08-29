@@ -1,0 +1,9 @@
+name: mobile_profile_domain
+description: Mobile Profile Browser 的纯 Dart 领域模型与业务契约。
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+# 该包刻意保持无 Flutter 依赖，便于独立测试与未来复用。
