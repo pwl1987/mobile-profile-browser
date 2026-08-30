@@ -25,6 +25,8 @@ final class ProfileStore {
   late final SqliteDeviceProfileRepository deviceProfiles = SqliteDeviceProfileRepository(_db);
   late final SqliteNetworkRouteRepository networkRoutes = SqliteNetworkRouteRepository(_db);
   late final SqliteActiveRuntimeRepository runtimes = SqliteActiveRuntimeRepository(_db);
+  late final SqliteBrowserProfileRepository browserProfiles =
+      SqliteBrowserProfileRepository(_db);
 
   /// 打开（或创建）指定路径的数据库并应用迁移。
   ///
