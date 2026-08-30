@@ -21,7 +21,17 @@
 
 ## 当前状态
 
-项目正在进行 **M1 浏览器底座集成**。
+项目当前处于 **M3 Browser Profile 阶段**：M1 构建底座与 M2 Profile Core 已通过验收，隔离契约与 Runtime 编排层已 CI 化；Gate 状态详见 [docs/status/project-status.md](docs/status/project-status.md)。
+
+## 测试 APK
+
+develop 每次合入后由 CI 自动构建 Debug APK（M1 可重复构建基线，约 383 MiB）：
+
+- 下载地址（需 GitHub 账号登录）：<https://github.com/pwl1987/mobile-profile-browser/actions/runs/33296076558/artifacts/9727669699>
+- gh CLI 方式：`gh run download 33296076558 -n mobile-profile-browser-m1-debug -R pwl1987/mobile-profile-browser`
+- 历史构建列表：[M1 Android 工作流](https://github.com/pwl1987/mobile-profile-browser/actions/workflows/android-m1.yml)
+
+说明：Artifact 有保留期（默认 90 天），过期后请从工作流列表进入最近一次成功运行下载。该 APK 为锁定基线 `b4721ae6` 的纯上游 WebLibre 构建，尚未包含 Mobile Profile 业务层（业务层随补丁流接入，见 [patches/README.md](patches/README.md)）。
 
 当前上游基线：
 
