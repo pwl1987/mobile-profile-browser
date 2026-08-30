@@ -1,0 +1,22 @@
+name: mobile_profile_weblibre
+description: Mobile Profile 的 WebLibre 运行时适配层（路径、存储目录、Runtime 状态与进程绑定编排）。
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  mobile_profile_domain:
+    path: ../mobile_profile_domain
+  mobile_profile_browser_adapter:
+    path: ../mobile_profile_browser_adapter
+
+dev_dependencies:
+  test: ^1.26.0
+
+# 本包是 WebLibre 运行时侧的纯 Dart 编排层：
+# - 目录布局/元数据文件名镜像上游 utils/filesystem.dart 的常量；
+# - Gecko 进程绑定通过 WebLibreGeckoBinder 契约注入，真实实现在
+#   Android/Flutter 侧（M3 真机阶段），测试注入 Fake；
+# - 不依赖 Flutter、GeckoView 或 Android API。
