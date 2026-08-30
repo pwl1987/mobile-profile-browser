@@ -111,3 +111,27 @@ V0.1 在 Find N3 上至少验证：
 - Profile 切换不会错误继承上一 Profile 的 display state；
 - 浏览器显示尺寸与 Android 当前窗口状态一致；
 - 网络出口与 Profile 绑定关系保持不变。
+
+## M3 真机验收矩阵
+
+执行 runbook 与结果记录：`tools/device/README.md`（M3 Gate 收口条件）。
+
+| 场景 | 必须测试 | 说明 |
+| --- | --- | --- |
+| 外屏启动 | ✅ | 折叠态冷启动 |
+| 内屏启动 | ✅ | 展开态冷启动 |
+| 展开 | ✅ | 运行中形态切换 |
+| 折叠 | ✅ | 运行中形态切换 |
+| 屏幕切换 | ✅ | 内外屏往复 |
+| Activity 重建 | ✅ | "不保留活动" + 切回 |
+| 后台恢复 | ✅ | Home → 回前台 |
+| 横竖屏 | ✅ | 旋转 |
+| 分屏 | 后续 | — |
+| 键盘弹出 | 后续 | — |
+
+### 实现红线：不得缓存屏幕度量
+
+错误做法：缓存 `MediaQuery.of(context).size.width` 等值后复用——折叠/
+展开/旋转后尺寸即变化，缓存值必然过期。正确做法：每次渲染经
+WindowMetrics（`MediaQuery`/`WidgetsBindingObserver`）重新获取；涉及
+viewport 的判断在 build 内完成，不在状态里持久化度量值。
