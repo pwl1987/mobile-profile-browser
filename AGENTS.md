@@ -8,6 +8,7 @@ Mobile Profile Browser：基于 WebLibre（AGPL-3.0，Git Submodule `vendor/webl
 - `packages/mobile_profile_integration/` — 领域层与浏览器/网络运行时之间的 Adapter 契约，只定义接口，不依赖 Flutter、GeckoView、sing-box 或 Android API。
 - `packages/mobile_profile_storage/` — SQLite 持久化（schema v2：含 browser_profiles 绑定表；迁移框架、事务、仓储实现），唯一引入 sqlite3 的包。
 - `packages/mobile_profile_browser_adapter/` — MobileProfile ↔ WebLibre 浏览器 Profile 映射与启动编排（WebLibreProfileMapper / ProfileLaunchService / Fake 适配器）。
+- `packages/mobile_profile_weblibre/` — WebLibre 运行时侧编排：真实目录布局（镜像上游常量）、Runtime 状态机、**Gecko 进程一次性绑定**的单槽位管理；Gecko 绑定经 `WebLibreGeckoBinder` 契约注入（真机实现点）。
 - `vendor/weblibre/` — 上游 WebLibre 子模块（Flutter/GeckoView 浏览器），**不要手工修改其 Git 历史**。
 - `patches/weblibre/` — 本项目对上游工作树的最小补丁。
 - `tools/` — 子模块初始化、工作树准备、补丁应用脚本。
@@ -60,7 +61,9 @@ README、架构文档、测试方案、Issue/PR、commit message 默认**中文*
 1. **子模块基线已统一（2026-08-30）**：`vendor/weblibre` 锁定 `b4721ae6`，git 索引、三个 tools 脚本与全部 CI 工作流一致。曾出现 b4721ae6/dc74be45 双基线并存（差 1 个上游提交）导致 domain-quality 长期红；实测统一到 dc74be45 会让纯上游 `flutter analyze` 因 material_ui 1.1.0 类型冲突报错，故回退统一到 b4721ae6。任何脚本中的 commit 常量必须与 git 索引一致；升级上游按 `docs/upstream/weblibre.md` 流程执行。
 2. **Flutter 3.47 APK 产物探测误报**：Gradle 已产出 APK 时 flutter CLI 仍可能返回非零。CI 以"存在 >1MB 的 APK"判定成功，不要改回只信任退出码。
 3. 上游把 `assets/quotes`、`assets/sites`、`assets/ublock` 声明为 Flutter assets 但空目录不入 Git，构建前需 `prepare-weblibre-worktree.sh` 补建。
-4. 分支：`develop` 是实际工作线，`main` 滞后；CI 在 push/PR 到 main 和 develop 时触发。功能分支（如 `fix/ci-apk-build`）完成后合入 develop。
+4. 分支：`develop` 是实际工作线，`main` 滞后；CI 在 push/PR 到 main 和 develop 时触发。功能分支完成后合入 develop。
+5. **Gecko 进程一次性绑定**（上游 core/filesystem.dart）：一个进程同时最多一个已绑定浏览器 Profile，切换必须 stop→launch（`WebLibreRuntimeManager` 强制）；多 Profile 并发浏览前必须先解决进程隔离。
+6. 补丁按基线分目录（`patches/<commit>/`），当前基线目录 `b4721ae6/` 允许为空；真机验收 runbook 在 `tools/device/README.md`，Gate 状态见 `docs/status/project-status.md`，关键决策见 `docs/adr/`。
 
 ## 敏感变更前必读
 
