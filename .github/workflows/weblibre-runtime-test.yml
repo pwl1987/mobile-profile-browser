@@ -1,0 +1,43 @@
+name: WebLibre 运行时层测试
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  weblibre-runtime-test:
+    name: WebLibre Runtime 编排层
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.1'
+
+      - name: 获取领域层包依赖
+        run: dart pub get
+        working-directory: packages/mobile_profile_domain
+
+      - name: 获取浏览器适配层包依赖
+        run: dart pub get
+        working-directory: packages/mobile_profile_browser_adapter
+
+      - name: 获取 WebLibre 运行时层包依赖
+        run: dart pub get
+        working-directory: packages/mobile_profile_weblibre
+
+      - name: WebLibre 运行时层静态分析
+        run: dart analyze
+        working-directory: packages/mobile_profile_weblibre
+
+      - name: WebLibre 运行时层单元测试（目录布局/状态机/进程绑定）
+        run: dart test
+        working-directory: packages/mobile_profile_weblibre
