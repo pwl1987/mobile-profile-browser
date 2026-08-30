@@ -1,3 +1,4 @@
+export 'src/browser_profile_entry.dart';
 export 'src/identity.dart';
 export 'src/in_memory_repositories.dart';
 export 'src/mobile_profile.dart';
