@@ -117,4 +117,31 @@ final class WebLibreRuntimeManager {
       throw WebLibreRuntimeBindingError('Gecko 解绑失败: $error');
     }
   }
+
+  /// 进程重启后的恢复（ADR-004）：持久化声称 starting/running/stopping
+  /// 的句柄不得直接当作真相——先降级 unknown，再收敛。
+  ///
+  /// 新进程内不存在旧 Gecko runtime，健康检查结论恒为 stopped，
+  /// 因此这里不经过外部 binder，直接 unknown → stopped 并释放槽位。
+  /// （持久化句柄的接线属于 M4 Runtime 持久化；当前作用于内存态。）
+  Future<WebLibreRuntimeHandle?> recoverAfterRestart() async {
+    final current = _bound;
+    if (current == null) return null;
+    switch (current.state) {
+      case WebLibreRuntimeState.starting:
+      case WebLibreRuntimeState.running:
+      case WebLibreRuntimeState.stopping:
+        var handle = WebLibreRuntimeController.transition(
+            current, WebLibreRuntimeState.unknown);
+        handle = WebLibreRuntimeController.transition(
+            handle, WebLibreRuntimeState.stopped);
+        _bound = null;
+        return handle;
+      case WebLibreRuntimeState.created:
+      case WebLibreRuntimeState.stopped:
+      case WebLibreRuntimeState.failed:
+      case WebLibreRuntimeState.unknown:
+        return current;
+    }
+  }
 }
