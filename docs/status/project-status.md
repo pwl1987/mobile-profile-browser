@@ -11,14 +11,22 @@
 | M2 Profile Core（CRUD+SQLite+迁移+恢复） | ✅ 2026-08-30 | PR #3，全工作流绿 |
 | M3.1 Browser Profile Contract | ✅ 2026-08-30 | PR #4，映射/绑定/隔离契约 CI 化 |
 | M3.2 Isolation Contract Test | ✅ 2026-08-30 | browser_profile_isolation_test 常驻 CI |
-| M3.3 Real WebLibre Runtime | 🔨 编排层完成 | PR #5：目录布局/状态机/进程绑定管理（Dart 层） |
-| M3.4 Find N3 Device Validation | ⏳ 待真机 | 验收脚本见 tools/device/README.md |
+| M3.3 Real WebLibre Runtime | ✅ 编排层（PR #5） | 目录布局/状态机/进程绑定管理 + ADR-004 unknown 恢复语义 |
+| M3.4 Real Runtime Integration | 🔨 进行中 | Binder/补丁/真机验收；runbook 见 tools/device/README.md |
 
 ## Next
 
-1. 真实 Gecko 绑定实现（Android/Flutter 侧 WebLibreGeckoBinder）+
-   `patches/b4721ae6/0001-profile-hooks.patch`。
-2. Find N3 真机执行 M3 验收（Cookie 隔离 / 重启恢复 / 折叠矩阵）。
+1. M3.4.2-3：`RealWebLibreGeckoBinder` + MethodChannel 桥（落在 vendor
+   应用内的 Android 侧，不进纯 Dart 包——评审决定）+
+   `patches/b4721ae6/001-add-mobile-profile-dependencies.patch`。
+2. M3.4.4-7：真机 Profile 创建/启动/文件级隔离/Cookie 隔离。
+3. Find N3 真机执行 M3 验收 runbook（含 am kill 进程死亡与低内存回收）。
+
+## 产品定位说明（ADR-004）
+
+Gecko 单绑定约束 ⇒ 产品是**多 Profile 管理浏览环境**，不是多开浏览器：
+同一时刻至多一个 Profile 浏览；切换走 STOP→UNBIND→CREATE→BIND→START。
+多 Profile 并发浏览需要未来的进程隔离方案，当前明确不做。
 
 ## Blocker
 
