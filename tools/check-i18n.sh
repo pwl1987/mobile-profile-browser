@@ -4,6 +4,10 @@ set -euo pipefail
 # 中文优先检查（docs/standards/i18n.md）：
 # README 与 docs/**/*.md 剥离代码块/行内代码后，中文占比须 ≥ 阈值。
 # 例外文件登记在下方白名单。
+#
+# 统计方法与 locale 无关：CJK 基本区（U+4E00–U+9FFF）的 UTF-8 编码
+# 首字节落在 0xE4–0xE9，且续字节在 0x80–0xBF，因此统计首字节即统计
+# 汉字个数，不依赖 grep 的 collation。
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 THRESHOLD_PERCENT=15
@@ -14,17 +18,16 @@ ALLOWLIST=(
 )
 
 count_cjk() {
-  # 统计 CJK 字符数（基本区 + 扩展A常用范围）
-  printf '%s' "$1" | grep -o '[一-鿿]' | wc -l | tr -d ' '
+  { LC_ALL=C grep -o $'[\xe4-\xe9]' "$1" || true; } | wc -l | tr -d ' '
 }
 
 count_ascii_letters() {
-  printf '%s' "$1" | grep -o '[A-Za-z]' | wc -l | tr -d ' '
+  { LC_ALL=C grep -o '[A-Za-z]' "$1" || true; } | wc -l | tr -d ' '
 }
 
-strip_code() {
+strip_code_to() {
   # 移除 fenced code block（``` 或 ~~~），再移除行内 `code`
-  sed -e '/^```/,/^```/d' -e '/^~~~/,/^~~~/d' "$1" | sed -e 's/`[^`]*`//g'
+  sed -e '/^```/,/^```/d' -e '/^~~~/,/^~~~/d' "$1" | sed -e 's/`[^`]*`//g' > "$2"
 }
 
 is_allowed() {
@@ -37,6 +40,8 @@ is_allowed() {
 
 failed=0
 checked=0
+prose_file="$(mktemp)"
+trap 'rm -f "$prose_file"' EXIT
 
 while IFS= read -r file; do
   rel="${file#"$ROOT_DIR"/}"
@@ -45,9 +50,9 @@ while IFS= read -r file; do
     continue
   fi
   checked=$((checked + 1))
-  prose="$(strip_code "$file")"
-  cjk="$(count_cjk "$prose")"
-  letters="$(count_ascii_letters "$prose")"
+  strip_code_to "$file" "$prose_file"
+  cjk="$(count_cjk "$prose_file")"
+  letters="$(count_ascii_letters "$prose_file")"
   total=$((cjk + letters))
   if (( total == 0 )); then
     echo "警告：$rel 无可统计文本（空或纯代码文档），视为通过"
