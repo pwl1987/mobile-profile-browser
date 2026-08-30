@@ -1,0 +1,24 @@
+name: 中文优先检查
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  i18n-quality:
+    name: i18n 质量检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 文档中文占比检查
+        run: bash ./tools/check-i18n.sh
+
+      # Flutter UI 出现后在此追加 arb 键存在性检查
+      # （用户可见字符串必须进入 localization，见 docs/standards/i18n.md）

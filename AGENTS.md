@@ -42,6 +42,8 @@ Android M1 构建链见 `.github/workflows/android-m1.yml`（Flutter 3.47.1 + Ja
 
 README、架构文档、测试方案、Issue/PR、commit message 默认**中文**；代码中的类名、函数名、API、第三方项目名保留英文。
 
+**中文优先是一级要求（ADR-005，规范：`docs/standards/i18n.md`）**：用户可见文本（UI/错误提示/Toast/Dialog 等）必须中文且走 localization（禁止硬编码英文字符串、禁止把内部 enum 名直接显示给用户——用 `profileStatusZhLabel()` / `webLibreRuntimeStateZhLabel()`）；文档与 Release Notes 默认中文；APK 文件名与代码标识符保持英文。`i18n-quality.yml` 工作流强制文档中文占比；Flutter UI 出现后用户可见字符串必须进 `lib/l10n/app_zh.arb`。产品名「独立浏览器」，副标题「多 Profile 隔离浏览环境」。
+
 ## 进度原则（最高优先级）
 
 **不以功能数量衡量项目进度，以经过真实测试的能力衡量项目进度。**"SSH Provider 已实现"不算完成；"真机上 Profile A 经 VPS 出口确认公网出口变化、停止后资源正确释放、重启后能重建连接"才算完成。每个 Gate（M1–M9，见 `docs/architecture/implementation-roadmap.md`）未验收不进入下一阶段；禁止在构建底座未稳定时堆 Profile/UI 功能。

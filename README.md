@@ -1,8 +1,28 @@
-# Mobile Profile Browser
+# 独立浏览器
 
-> Android 多 Profile 移动浏览器项目。
+> **多 Profile 隔离浏览环境 · Android**
 >
-> 目标：在一台真实 Android 设备上，以独立 Profile 管理浏览器状态、设备配置与网络身份，并保证 Profile 之间的数据与网络边界清晰、可验证、可恢复。
+> 在一台真实 Android 设备上，以独立 Profile 管理浏览器状态、设备配置与网络身份，并保证 Profile 之间的数据与网络边界清晰、可验证、可恢复。
+
+## 当前状态
+
+| Gate | 内容 | 状态 |
+| --- | --- | --- |
+| M1 | Android 构建基线（WebLibre 可重复构建） | ✅ |
+| M2 | Profile 核心（CRUD + SQLite + 迁移 + 崩溃恢复） | ✅ |
+| M3 | Browser Adapter / Runtime / 真机隔离验收 | 🚧 |
+| M4+ | 网络 Provider / 设备配置 / 身份一致性 | ⏳ |
+
+详细状态与阻塞项见 [docs/status/project-status.md](docs/status/project-status.md)；关键架构决策见 [docs/adr/](docs/adr/)。
+
+## 下载与安装
+
+- **公开下载（无需登录）**：[GitHub Release · m1-baseline-20260830](https://github.com/pwl1987/mobile-profile-browser/releases/tag/m1-baseline-20260830)
+- Release 列表：<https://github.com/pwl1987/mobile-profile-browser/releases>
+
+安装：下载 APK → 允许安装未知来源 → 安装 → （业务层就绪后）创建 Profile → 启动浏览环境。
+
+说明：当前 APK 为锁定基线 `b4721ae6` 的纯上游 WebLibre 构建验证包，**尚未包含 Profile 业务层**（随补丁流接入，见 [patches/README.md](patches/README.md)）；Debug 签名，仅用于构建基线验证与真机验收。自 M3 起进入中文产品 Release 体系（模板见 [docs/release/](docs/release/release-notes-template.md)）。
 
 ## 项目定位
 
@@ -18,21 +38,6 @@
 - 安全存储、崩溃恢复、导入导出与自动化测试
 
 项目优先保证**隔离正确性、网络可验证性和运行稳定性**，不会以简单修改 User-Agent 作为所谓“指纹方案”。
-
-## 当前状态
-
-项目当前处于 **M3 Browser Profile 阶段**：M1 构建底座与 M2 Profile Core 已通过验收，隔离契约与 Runtime 编排层已 CI 化；Gate 状态详见 [docs/status/project-status.md](docs/status/project-status.md)。
-
-## 测试 APK
-
-develop 每次合入后由 CI 自动构建 Debug APK（M1 可重复构建基线，约 383 MiB）：
-
-- **公开下载（无需登录）**：[GitHub Release · m1-baseline-20260830](https://github.com/pwl1987/mobile-profile-browser/releases/tag/m1-baseline-20260830)
-- Release 列表（后续构建）：<https://github.com/pwl1987/mobile-profile-browser/releases>
-- CI Artifact（需 GitHub 账号登录，保留 90 天）：<https://github.com/pwl1987/mobile-profile-browser/actions/runs/33296076558/artifacts/9727669699>
-- gh CLI 方式：`gh run download 33296076558 -n mobile-profile-browser-m1-debug -R pwl1987/mobile-profile-browser`
-
-说明：该 APK 为锁定基线 `b4721ae6` 的纯上游 WebLibre 构建，尚未包含 Mobile Profile 业务层（业务层随补丁流接入，见 [patches/README.md](patches/README.md)）；Debug 签名，仅用于构建基线与真机验收。
 
 当前上游基线：
 
@@ -166,11 +171,12 @@ Device/Fingerprint Engine 不采用简单随机字段拼接。
 - [安全威胁模型](docs/security/threat-model.md)
 - [验收矩阵](docs/testing/acceptance-matrix.md)
 
-## 开发语言规范
+## 语言规范（一级要求）
 
-项目自己的 README、架构设计、技术方案、测试方案、Issue、PR 模板与运行手册默认使用**中文**。
-
-代码中的类名、函数名、变量名、协议名、第三方项目名、Android/GeckoView API 等保留其官方英文名称。
+本项目**中文优先（Chinese-first）**：UI、文档、错误提示、Release 全部中文；
+代码标识符、协议名、API、Git 分支与 APK 文件名保留英文。产品名
+**「独立浏览器」**（副标题：多 Profile 隔离浏览环境）。完整规范见
+[docs/standards/i18n.md](docs/standards/i18n.md)（ADR-005）。
 
 ## 上游与许可证
 
