@@ -52,9 +52,13 @@ final class SqliteMobileProfileRepository implements MobileProfileRepository {
       'INSERT INTO profiles (id, name, created_at, updated_at, browser_profile_ref, '
       'device_profile_ref, network_route_ref, status, metadata) '
       'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+      // 与内存实现的全量替换语义一致：save 覆盖除主键外的全部列。
       'ON CONFLICT(id) DO UPDATE SET name = excluded.name, '
-      'updated_at = excluded.updated_at, status = excluded.status, '
-      'metadata = excluded.metadata',
+      'created_at = excluded.created_at, updated_at = excluded.updated_at, '
+      'browser_profile_ref = excluded.browser_profile_ref, '
+      'device_profile_ref = excluded.device_profile_ref, '
+      'network_route_ref = excluded.network_route_ref, '
+      'status = excluded.status, metadata = excluded.metadata',
     );
     try {
       stmt.execute([
@@ -285,6 +289,85 @@ final class SqliteActiveRuntimeRepository implements ActiveRuntimeRepository {
       startedAt: _parseDate(row['started_at'] as String),
       stoppedAt: stoppedAt == null ? null : _parseDate(stoppedAt as String),
       status: NetworkRouteStatus.values.byName(row['status'] as String),
+    );
+  }
+}
+
+final class SqliteBrowserProfileRepository implements BrowserProfileRepository {
+  SqliteBrowserProfileRepository(this._db);
+
+  final Database _db;
+
+  static const String _columns =
+      'mobile_profile_id, browser_profile_id, storage_namespace, created_at, last_opened_at';
+
+  @override
+  Future<BrowserProfileEntry?> findByMobileProfileId(String mobileProfileId) async {
+    final rows = _db.select(
+      'SELECT $_columns FROM browser_profiles WHERE mobile_profile_id = ?',
+      [mobileProfileId],
+    );
+    return rows.isEmpty ? null : _fromRow(rows.first);
+  }
+
+  @override
+  Future<BrowserProfileEntry?> findByBrowserProfileId(String browserProfileId) async {
+    final rows = _db.select(
+      'SELECT $_columns FROM browser_profiles WHERE browser_profile_id = ?',
+      [browserProfileId],
+    );
+    return rows.isEmpty ? null : _fromRow(rows.first);
+  }
+
+  @override
+  Future<void> save(BrowserProfileEntry entry) async {
+    final clash = await findByBrowserProfileId(entry.browserProfileId);
+    if (clash != null && clash.mobileProfileId != entry.mobileProfileId) {
+      throw StateError('浏览器 Profile 已被其他 MobileProfile 绑定: '
+          '${entry.browserProfileId}');
+    }
+    final stmt = _db.prepare(
+      'INSERT INTO browser_profiles (mobile_profile_id, browser_profile_id, '
+      'storage_namespace, created_at, last_opened_at) VALUES (?, ?, ?, ?, ?) '
+      // 与内存实现的全量替换语义一致；browser_profile_id 的 UNIQUE 冲突
+      // 已在上方显式拦截。
+      'ON CONFLICT(mobile_profile_id) DO UPDATE SET '
+      'browser_profile_id = excluded.browser_profile_id, '
+      'storage_namespace = excluded.storage_namespace, '
+      'created_at = excluded.created_at, '
+      'last_opened_at = excluded.last_opened_at',
+    );
+    try {
+      stmt.execute([
+        entry.mobileProfileId,
+        entry.browserProfileId,
+        entry.storageNamespace,
+        _formatDate(entry.createdAt),
+        entry.lastOpenedAt == null ? null : _formatDate(entry.lastOpenedAt!),
+      ]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  @override
+  Future<void> delete(String mobileProfileId) async {
+    final stmt = _db.prepare('DELETE FROM browser_profiles WHERE mobile_profile_id = ?');
+    try {
+      stmt.execute([mobileProfileId]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  static BrowserProfileEntry _fromRow(Row row) {
+    final lastOpenedAt = row['last_opened_at'];
+    return BrowserProfileEntry(
+      mobileProfileId: row['mobile_profile_id'] as String,
+      browserProfileId: row['browser_profile_id'] as String,
+      storageNamespace: row['storage_namespace'] as String,
+      createdAt: _parseDate(row['created_at'] as String),
+      lastOpenedAt: lastOpenedAt == null ? null : _parseDate(lastOpenedAt as String),
     );
   }
 }

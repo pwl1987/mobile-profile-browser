@@ -12,8 +12,11 @@ void main() {
   });
 
   tearDown(() async {
-    if (await tempDir.exists()) {
+    try {
       await tempDir.delete(recursive: true);
+    } on FileSystemException {
+      // Windows 下 WAL 句柄可能延迟释放导致删除失败；临时目录交给系统
+      // 清理，测试断言在此之前已经完成。
     }
   });
 
@@ -44,7 +47,7 @@ void main() {
     // ---- 第二次进程生命周期：重新打开并执行恢复 ----
     {
       final store = await ProfileStore.open(dbPath);
-      expect(store.schemaVersion, 1, reason: '重开后 schema 版本保持一致');
+      expect(store.schemaVersion, 2, reason: '重开后 schema 版本保持一致');
 
       final beforeRecovery = await store.profiles.list();
       expect(beforeRecovery.single.status, ProfileStatus.running,

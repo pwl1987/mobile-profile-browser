@@ -26,8 +26,7 @@ final class StorageMigration {
 final class StorageMigrations {
   const StorageMigrations();
 
-  static const List<StorageMigration> baseline = <StorageMigration>[
-    StorageMigration(version: 1, statements: <String>[
+  static const StorageMigration v1 = StorageMigration(version: 1, statements: <String>[
       '''
       CREATE TABLE schema_version (
         version INTEGER NOT NULL PRIMARY KEY,
@@ -49,8 +48,8 @@ final class StorageMigrations {
         document TEXT NOT NULL
       )
       ''',
-      // browser_profiles 表在 M3 BrowserProfileAdapter 落地时引入；
-      // 当前 Profile 的浏览器引用以 browser_profile_ref 列存在。
+      // v1 阶段 Profile 的浏览器引用以 browser_profile_ref 列存在；
+      // 浏览器 Profile 绑定表在 v2（M3）引入。
       '''
       CREATE TABLE profiles (
         id TEXT NOT NULL PRIMARY KEY,
@@ -84,8 +83,30 @@ final class StorageMigrations {
       )
       ''',
       'CREATE INDEX idx_runtime_active ON runtime_instances (profile_id, generation)',
-    ]),
-  ];
+    ]);
+
+  /// v2（M3）：浏览器 Profile 绑定表。
+  ///
+  /// - 一个 MobileProfile 恰好一个浏览器 Profile（主键约束）；
+  /// - browser_profile_id 全局唯一（UNIQUE），数据层禁止共享浏览器存储；
+  /// - storageNamespace 与上游 WebLibre 目录布局对齐：
+  ///   weblibre_profiles/profile-<uuid>/files/mozilla
+  static const StorageMigration v2 = StorageMigration(version: 2, statements: <String>[
+      '''
+      CREATE TABLE browser_profiles (
+        mobile_profile_id TEXT NOT NULL PRIMARY KEY,
+        browser_profile_id TEXT NOT NULL UNIQUE,
+        storage_namespace TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_opened_at TEXT,
+        CONSTRAINT fk_browser_profile_mobile
+          FOREIGN KEY (mobile_profile_id) REFERENCES profiles (id) ON DELETE CASCADE
+      )
+      ''',
+      'CREATE INDEX idx_browser_profiles_browser_id ON browser_profiles (browser_profile_id)',
+    ]);
+
+  static const List<StorageMigration> baseline = <StorageMigration>[v1, v2];
 
   static int databaseVersion(Database db) {
     try {
