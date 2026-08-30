@@ -16,11 +16,20 @@
 
 ## Next
 
-1. M3.4.2-3：`RealWebLibreGeckoBinder` + MethodChannel 桥（落在 vendor
-   应用内的 Android 侧，不进纯 Dart 包——评审决定）+
-   `patches/b4721ae6/001-add-mobile-profile-dependencies.patch`。
+1. M3.4.2 第二阶段：`RealWebLibreGeckoBinder` + MethodChannel 桥（落在
+   vendor 应用内的 Android 侧，不进纯 Dart 包——评审决定）+
+   `patches/b4721ae6/001-add-mobile-profile-dependencies.patch`；
+   中文 Profile UI（l10n arb + 产品壳）随补丁流落地。
 2. M3.4.4-7：真机 Profile 创建/启动/文件级隔离/Cookie 隔离。
 3. Find N3 真机执行 M3 验收 runbook（含 am kill 进程死亡与低内存回收）。
+
+## 中文优先（一级要求，2026-08-31 起）
+
+ADR-005 + `docs/standards/i18n.md`：产品名**「独立浏览器」**（副标题：
+多 Profile 隔离浏览环境）；UI/文档/Release 中文，代码标识符与 APK 文件名
+英文；内部 enum 不直接出 UI（`profileStatusZhLabel` /
+`webLibreRuntimeStateZhLabel` 已落地）；`i18n-quality.yml` 常驻 CI。
+自 M3 起开发版 Release 使用 `docs/release/release-notes-template.md`。
 
 ## 产品定位说明（ADR-004）
 

@@ -10,4 +10,5 @@ export 'src/recovery.dart';
 export 'src/repositories.dart';
 export 'src/runtime_instance.dart';
 export 'src/runtime_lifecycle.dart';
+export 'src/status_labels.dart';
 export 'src/validators.dart';
