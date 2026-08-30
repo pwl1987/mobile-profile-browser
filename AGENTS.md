@@ -6,6 +6,8 @@ Mobile Profile Browser：基于 WebLibre（AGPL-3.0，Git Submodule `vendor/webl
 
 - `packages/mobile_profile_domain/` — 纯 Dart 领域模型（MobileProfile / DeviceProfile / NetworkRoute / Repository 契约），刻意不依赖 Flutter。
 - `packages/mobile_profile_integration/` — 领域层与浏览器/网络运行时之间的 Adapter 契约，只定义接口，不依赖 Flutter、GeckoView、sing-box 或 Android API。
+- `packages/mobile_profile_storage/` — SQLite 持久化（schema v2：含 browser_profiles 绑定表；迁移框架、事务、仓储实现），唯一引入 sqlite3 的包。
+- `packages/mobile_profile_browser_adapter/` — MobileProfile ↔ WebLibre 浏览器 Profile 映射与启动编排（WebLibreProfileMapper / ProfileLaunchService / Fake 适配器）。
 - `vendor/weblibre/` — 上游 WebLibre 子模块（Flutter/GeckoView 浏览器），**不要手工修改其 Git 历史**。
 - `patches/weblibre/` — 本项目对上游工作树的最小补丁。
 - `tools/` — 子模块初始化、工作树准备、补丁应用脚本。

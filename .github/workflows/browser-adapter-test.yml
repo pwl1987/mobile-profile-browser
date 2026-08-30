@@ -1,0 +1,48 @@
+name: 浏览器适配层测试
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  browser-adapter-test:
+    name: 浏览器 Profile 适配层
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.1'
+
+      - name: 获取依赖层包依赖
+        run: |
+          dart pub get
+        working-directory: packages/mobile_profile_domain
+
+      - name: 获取集成层包依赖
+        run: dart pub get
+        working-directory: packages/mobile_profile_integration
+
+      - name: 获取存储层包依赖
+        run: dart pub get
+        working-directory: packages/mobile_profile_storage
+
+      - name: 获取浏览器适配层包依赖
+        run: dart pub get
+        working-directory: packages/mobile_profile_browser_adapter
+
+      - name: 浏览器适配层静态分析
+        run: dart analyze
+        working-directory: packages/mobile_profile_browser_adapter
+
+      - name: 浏览器适配层单元测试（含 Profile 隔离契约）
+        run: dart test
+        working-directory: packages/mobile_profile_browser_adapter
