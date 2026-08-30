@@ -8,8 +8,8 @@
 | Gate | 内容 | 状态 |
 |---|---|---|
 | M1 | Android / WebLibre 可重复构建底座（APK Artifact） | ✅ 2026-08-30 |
-| M2 | Profile Core：CRUD + SQLite + 迁移 + 崩溃恢复 | 🔨 进行中 |
-| M3 | Browser Profile 隔离：Adapter + Storage/Cookie/权限隔离验证 | |
+| M2 | Profile Core：CRUD + SQLite + 迁移 + 崩溃恢复 | ✅ 2026-08-30 |
+| M3 | Browser Profile 隔离：Adapter + Storage/Cookie/权限隔离验证 | 🔨 第一切片（映射+绑定+隔离契约 CI 化；真机 GeckoView 验收待做） |
 | M4 | Runtime 生命周期：统一状态机 + 进程死亡恢复 | |
 | M5 | 网络 Provider：DIRECT / SOCKS5 / SSH | |
 | M6 | Device Profile：Find N3 一致性（折叠/展开/重建） | |

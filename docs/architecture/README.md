@@ -9,7 +9,8 @@
 | [V0.1 架构基线](v0.1-baseline.md) | 第一阶段冻结范围与非目标 | 基线 |
 | [M1 浏览器底座](m1-browser-foundation.md) | WebLibre 导入与 Android 验收 Gate | 基线（已通过） |
 | [M1 构建环境](m1-build-environment.md) | Flutter / Dart / Android 可重复构建环境 | 基线 |
-| [M2 Profile Core](m2-profile-core.md) | CRUD / SQLite / 迁移 / 崩溃恢复 | 实施中 |
+| [M2 Profile Core](m2-profile-core.md) | CRUD / SQLite / 迁移 / 崩溃恢复 | 基线（已通过） |
+| [M3 浏览器适配](m3-browser-adapter.md) | WebLibre Profile 映射 / 绑定 / 隔离契约 | 实施中 |
 | [Profile 模型](profile-model.md) | Profile 身份、隔离与生命周期 | 设计中 |
 | [领域模型](domain-model.md) | MobileProfile、DeviceProfile、NetworkRoute | 实施中 |
 | [网络架构](networking.md) | Provider、DNS、SSH、TUN/VPN 与故障策略 | 实施中 |
