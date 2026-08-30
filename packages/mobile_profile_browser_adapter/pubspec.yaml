@@ -1,0 +1,23 @@
+name: mobile_profile_browser_adapter
+description: Mobile Profile 与 WebLibre 浏览器 Profile 之间的映射与启动编排。
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  mobile_profile_domain:
+    path: ../mobile_profile_domain
+  mobile_profile_integration:
+    path: ../mobile_profile_integration
+  mobile_profile_storage:
+    path: ../mobile_profile_storage
+
+dev_dependencies:
+  test: ^1.26.0
+
+# 本包是 Domain/Integration/Storage 之上的编排层，负责把 MobileProfile
+# 映射到 WebLibre 的浏览器 Profile（目录布局见 WebLibreProfileMapper）。
+# 不依赖 Flutter、GeckoView 或 Android API；真实 WebLibre 适配器在
+# Android 侧薄实现层接入（M3 真机阶段）。
