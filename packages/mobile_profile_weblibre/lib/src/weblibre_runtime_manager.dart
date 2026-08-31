@@ -256,6 +256,27 @@ final class WebLibreRuntimeManager {
         return RuntimeRecoveryReport(recoveredSessions: recovered);
       });
 
+  /// 对 unknown 槽位的健康裁决：确认仍存活（Gecko 仍在响应该 Profile）。
+  ///
+  /// 回到 running 并继续持有槽位——调用方随后走正常 stop 流程。
+  /// 与 [confirmUnknownDead] 一起构成 ADR-006 恢复流程的"仍存活/已死亡"
+  /// 两个分支；裁决前 unknown 状态阻止一切新启动。
+  Future<WebLibreRuntimeHandle> confirmUnknownAlive() => _serialized(() async {
+        final current = _bound;
+        if (current == null) {
+          throw const WebLibreRuntimeBindingError('进程当前没有已绑定的浏览器 Profile');
+        }
+        if (current.state != WebLibreRuntimeState.unknown) {
+          throw WebLibreRuntimeBindingError(
+              '仅 unknown 状态可确认存活，当前为 ${current.state.name}');
+        }
+        final handle = WebLibreRuntimeController.transition(
+            current, WebLibreRuntimeState.running);
+        _bound = handle;
+        await _persist(current, WebLibreRuntimeState.running);
+        return handle;
+      });
+
   /// 旧 Runtime 回调守卫：仅当前活跃会话（id 与 generation 都匹配）的
   /// 回调可被接受，过期回调一律丢弃（防旧回调误杀新会话）。
   bool isCurrentSession(String sessionId, int generation) {

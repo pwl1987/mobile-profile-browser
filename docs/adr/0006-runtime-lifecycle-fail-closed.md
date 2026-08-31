@@ -22,7 +22,8 @@
 unbind 成功 → stopped → 释放槽位
 unbind 失败 → unknown → 保留槽位（阻止新 Profile 启动）
                 ↓ 健康检查
-        确认死亡 → stopped → 释放（confirmUnknownDead）
+        ├── 确认死亡 → stopped → 释放（confirmUnknownDead）
+        └── 仍存活 → running → 继续持有槽位，走正常 stop（confirmUnknownAlive）
 ```
 
 Binder 契约固化：`bind` 抛错 = 保证未绑定（可释放槽位重试）；
