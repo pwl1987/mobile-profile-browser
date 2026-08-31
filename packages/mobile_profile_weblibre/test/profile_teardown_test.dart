@@ -32,10 +32,27 @@ final class FailingDeleteStorage implements WebLibreProfileStorage {
 
 final class OkBinder implements WebLibreGeckoBinder {
   @override
-  Future<void> bind(String id, String dir) async {}
+  Future<void> bind(
+    String browserProfileId,
+    String profileDir, {
+    required String sessionId,
+    required int generation,
+  }) async {}
 
   @override
-  Future<void> unbind(String id) async {}
+  Future<void> unbind(
+    String browserProfileId, {
+    required String sessionId,
+    required int generation,
+  }) async {}
+
+  @override
+  Future<WebLibreRuntimeHealth> health(String browserProfileId) async =>
+      WebLibreRuntimeHealth(
+        alive: false,
+        browserProfileId: browserProfileId,
+        observedAt: DateTime.utc(2026, 8, 31, 9),
+      );
 }
 
 MobileProfile profileOf(String id, String browserRef) {
@@ -163,8 +180,26 @@ void main() {
 
 final class _UnbindFailsBinder implements WebLibreGeckoBinder {
   @override
-  Future<void> bind(String id, String dir) async {}
+  Future<void> bind(
+    String browserProfileId,
+    String profileDir, {
+    required String sessionId,
+    required int generation,
+  }) async {}
 
   @override
-  Future<void> unbind(String id) async => throw StateError('gecko hang');
+  Future<void> unbind(
+    String browserProfileId, {
+    required String sessionId,
+    required int generation,
+  }) async =>
+      throw StateError('gecko hang');
+
+  @override
+  Future<WebLibreRuntimeHealth> health(String browserProfileId) async =>
+      WebLibreRuntimeHealth(
+        alive: false,
+        browserProfileId: browserProfileId,
+        observedAt: DateTime.utc(2026, 8, 31, 9),
+      );
 }

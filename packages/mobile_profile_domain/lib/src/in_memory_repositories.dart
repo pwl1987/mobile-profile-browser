@@ -168,4 +168,33 @@ final class InMemoryBrowserRuntimeSessionRepository
   Future<void> save(BrowserRuntimeSession session) async {
     _sessions[session.id] = session;
   }
+
+  @override
+  Future<BrowserRuntimeSession> allocateSession({
+    required String id,
+    required String mobileProfileId,
+    required String browserProfileId,
+    required String state,
+    required DateTime startedAt,
+  }) async {
+    // 单 isolate 内存实现天然无竞争；语义与 SQLite 事务版一致。
+    var maxGeneration = 0;
+    for (final session in _sessions.values) {
+      if (session.mobileProfileId == mobileProfileId &&
+          session.generation > maxGeneration) {
+        maxGeneration = session.generation;
+      }
+    }
+    final session = BrowserRuntimeSession(
+      id: id,
+      mobileProfileId: mobileProfileId,
+      browserProfileId: browserProfileId,
+      state: state,
+      generation: maxGeneration + 1,
+      startedAt: startedAt,
+      updatedAt: startedAt,
+    );
+    _sessions[id] = session;
+    return session;
+  }
 }

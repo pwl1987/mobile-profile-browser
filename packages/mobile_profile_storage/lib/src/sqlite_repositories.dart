@@ -430,6 +430,58 @@ final class SqliteBrowserRuntimeSessionRepository
     }
   }
 
+  @override
+  Future<BrowserRuntimeSession> allocateSession({
+    required String id,
+    required String mobileProfileId,
+    required String browserProfileId,
+    required String state,
+    required DateTime startedAt,
+  }) async {
+    // ADR-007：generation 的读-算-写必须在一个写事务内完成，
+    // 否则并发 Manager 会分配到重复 generation。
+    _db.execute('BEGIN IMMEDIATE');
+    try {
+      final rows = _db.select(
+        'SELECT COALESCE(MAX(generation), 0) AS g FROM runtime_sessions '
+        'WHERE mobile_profile_id = ?',
+        [mobileProfileId],
+      );
+      final generation = (rows.first['g'] as int) + 1;
+      final session = BrowserRuntimeSession(
+        id: id,
+        mobileProfileId: mobileProfileId,
+        browserProfileId: browserProfileId,
+        state: state,
+        generation: generation,
+        startedAt: startedAt,
+        updatedAt: startedAt,
+      );
+      final stmt = _db.prepare(
+        'INSERT INTO runtime_sessions (id, mobile_profile_id, browser_profile_id, '
+        'state, generation, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      );
+      try {
+        stmt.execute([
+          session.id,
+          session.mobileProfileId,
+          session.browserProfileId,
+          session.state,
+          session.generation,
+          _formatDate(session.startedAt),
+          _formatDate(session.updatedAt),
+        ]);
+      } finally {
+        stmt.dispose();
+      }
+      _db.execute('COMMIT');
+      return session;
+    } catch (_) {
+      _db.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
   static BrowserRuntimeSession _fromRow(Row row) => BrowserRuntimeSession(
         id: row['id'] as String,
         mobileProfileId: row['mobile_profile_id'] as String,

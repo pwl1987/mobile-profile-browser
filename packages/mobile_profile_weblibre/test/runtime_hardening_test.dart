@@ -13,17 +13,38 @@ final class RecordingBinder implements WebLibreGeckoBinder {
   final List<String> unbindLog = <String>[];
   Object? bindFailure;
   Object? unbindFailure;
+  WebLibreRuntimeHealth? healthResult;
 
   @override
-  Future<void> bind(String browserProfileId, String profileDir) async {
+  Future<void> bind(
+    String browserProfileId,
+    String profileDir, {
+    required String sessionId,
+    required int generation,
+  }) async {
     if (bindFailure != null) throw bindFailure!;
-    bindLog.add(browserProfileId);
+    bindLog.add('$browserProfileId|$sessionId|$generation');
   }
 
   @override
-  Future<void> unbind(String browserProfileId) async {
+  Future<void> unbind(
+    String browserProfileId, {
+    required String sessionId,
+    required int generation,
+  }) async {
     if (unbindFailure != null) throw unbindFailure!;
-    unbindLog.add(browserProfileId);
+    unbindLog.add('$browserProfileId|$sessionId|$generation');
+  }
+
+  @override
+  Future<WebLibreRuntimeHealth> health(String browserProfileId) async {
+    final result = healthResult;
+    if (result != null) return result;
+    return WebLibreRuntimeHealth(
+      alive: false,
+      browserProfileId: browserProfileId,
+      observedAt: DateTime.utc(2026, 8, 31, 9),
+    );
   }
 }
 
@@ -183,7 +204,8 @@ void main() {
       final handleA = await launchA;
       expect(handleA.browserProfileId, uuidA);
       await expectLater(launchB, throwsA(isA<WebLibreRuntimeBindingError>()));
-      expect(binder.bindLog, [uuidA], reason: '只允许一次真实绑定');
+      expect(binder.bindLog.length, 1, reason: '只允许一次真实绑定');
+      expect(binder.bindLog.single, startsWith(uuidA));
     });
 
     test('并发 stop 与 launch 串行化', () async {
@@ -197,8 +219,10 @@ void main() {
       await stopFuture;
       final handle = await launchFuture;
       expect(handle.browserProfileId, uuidB);
-      expect(binder.unbindLog, [uuidA]);
-      expect(binder.bindLog, [uuidA, uuidB]);
+      expect(binder.unbindLog.single, startsWith(uuidA));
+      expect(binder.bindLog.length, 2);
+      expect(binder.bindLog.first, startsWith(uuidA));
+      expect(binder.bindLog.last, startsWith(uuidB));
     });
   });
 
@@ -240,7 +264,7 @@ void main() {
   });
 
   group('真正的进程死亡恢复（持久化真相来源）', () {
-    test('进程被杀后：新实例基于持久化 running 收敛为 stopped', () async {
+    test('应用进程死亡：新实例基于持久化 running 收敛为 stopped', () async {
       final binderA = RecordingBinder();
       final managerA = managerOf(binderA, sessionStore: sessions);
       final handle = await managerA.launch(profileOf('p1', 'browser-$uuidA'));
@@ -251,7 +275,7 @@ void main() {
       final binderB = RecordingBinder();
       final managerB = managerOf(binderB, sessionStore: sessions);
 
-      final report = await managerB.recoverAfterProcessRestart();
+      final report = await managerB.recoverAfterApplicationProcessDeath();
 
       expect(report.recoveredSessions.single,
           (handle.sessionId, 'running'),
@@ -265,8 +289,26 @@ void main() {
       expect(relaunched.generation, handle.generation + 1);
     });
 
+    test('Dart 重启（进程未死）：只降级 unknown，禁止自动判死', () async {
+      final binderA = RecordingBinder();
+      final managerA = managerOf(binderA, sessionStore: sessions);
+      final handle = await managerA.launch(profileOf('p1', 'browser-$uuidA'));
+
+      // Flutter engine 重建：新 manager、共享会话存储、应用进程未死。
+      final binderB = RecordingBinder();
+      final managerB = managerOf(binderB, sessionStore: sessions);
+
+      final report = await managerB.recoverAfterDartRestart();
+
+      expect(report.recoveredSessions.single, (handle.sessionId, 'running'));
+      final after = await sessions.latestForProfile('p1');
+      expect(after!.state, 'unknown', reason: 'Gecko 可能仍存活，裁决交给健康检查');
+      expect(await sessions.findClaimedAlive().then((l) => l.length), 1,
+          reason: 'unknown 仍是声称存活状态，未被静默收敛');
+    });
+
     test('崩溃窗口：持久化 STARTING（bind 未完成即死亡）也会被收敛', () async {
-      // 手工构造启动窗口落盘的会话（manager 在 save(starting) 后、bind 前被杀）。
+      // 手工构造启动窗口落盘的会话（manager 在 allocate(starting) 后、bind 前被杀）。
       final now = DateTime.utc(2026, 8, 31, 9);
       await sessions.save(BrowserRuntimeSession(
         id: 'rs-window',
@@ -280,7 +322,7 @@ void main() {
 
       final binder = RecordingBinder();
       final manager = managerOf(binder, sessionStore: sessions);
-      final report = await manager.recoverAfterProcessRestart();
+      final report = await manager.recoverAfterApplicationProcessDeath();
 
       expect(report.recoveredSessions.single.$1, 'rs-window');
       expect((await sessions.latestForProfile('p1'))!.state, 'stopped');
@@ -289,21 +331,110 @@ void main() {
     test('多 Profile 残留会话全部收敛', () async {
       final now = DateTime.utc(2026, 8, 31, 9);
       await sessions.save(BrowserRuntimeSession(
-        id: 'rs-1', mobileProfileId: 'p1', browserProfileId: uuidA,
-        state: 'running', generation: 1, startedAt: now, updatedAt: now));
+          id: 'rs-1', mobileProfileId: 'p1', browserProfileId: uuidA,
+          state: 'running', generation: 1, startedAt: now, updatedAt: now));
       await sessions.save(BrowserRuntimeSession(
-        id: 'rs-2', mobileProfileId: 'p2', browserProfileId: uuidB,
-        state: 'stopping', generation: 1, startedAt: now, updatedAt: now));
+          id: 'rs-2', mobileProfileId: 'p2', browserProfileId: uuidB,
+          state: 'stopping', generation: 1, startedAt: now, updatedAt: now));
       await sessions.save(BrowserRuntimeSession(
-        id: 'rs-3', mobileProfileId: 'p3',
-        browserProfileId: '2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e',
-        state: 'stopped', generation: 1, startedAt: now, updatedAt: now));
+          id: 'rs-3', mobileProfileId: 'p3',
+          browserProfileId: '2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e',
+          state: 'stopped', generation: 1, startedAt: now, updatedAt: now));
 
       final manager = managerOf(RecordingBinder(), sessionStore: sessions);
-      final report = await manager.recoverAfterProcessRestart();
+      final report = await manager.recoverAfterApplicationProcessDeath();
 
       expect(report.recoveredSessions.length, 2, reason: 'stopped 不需要恢复');
       expect(await sessions.findClaimedAlive(), isEmpty);
+    });
+  });
+
+  group('unknown 槽位的健康裁决（实际真相观测）', () {
+    Future<WebLibreRuntimeManager> unknownManager(RecordingBinder binder) async {
+      binder.unbindFailure = StateError('gecko hang');
+      final manager = managerOf(binder, sessionStore: sessions);
+      await manager.launch(profileOf('p1', 'browser-$uuidA'));
+      await expectLater(manager.stop(), throwsA(isA<WebLibreRuntimeBindingError>()));
+      expect(manager.bound!.state, WebLibreRuntimeState.unknown);
+      return manager;
+    }
+
+    test('health 存活且会话身份匹配 → running 继续持有', () async {
+      final binder = RecordingBinder();
+      final manager = await unknownManager(binder);
+      final bound = manager.bound!;
+      binder.unbindFailure = null;
+      binder.healthResult = WebLibreRuntimeHealth(
+        alive: true,
+        browserProfileId: uuidA,
+        sessionId: bound.sessionId,
+        generation: bound.generation,
+        pid: 4242,
+        observedAt: DateTime.utc(2026, 8, 31, 9),
+      );
+
+      final resolved = await manager.resolveUnknownViaHealth();
+
+      expect(resolved.state, WebLibreRuntimeState.running);
+      expect(manager.bound!.browserProfileId, uuidA);
+      expect((await sessions.latestForProfile('p1'))!.state, 'running');
+
+      // 恢复 running 后可正常 stop。
+      final stopped = await manager.stop();
+      expect(stopped.state, WebLibreRuntimeState.stopped);
+    });
+
+    test('health 死亡 → stopped 释放槽位', () async {
+      final binder = RecordingBinder();
+      final manager = await unknownManager(binder);
+      binder.healthResult = WebLibreRuntimeHealth(
+        alive: false,
+        browserProfileId: uuidA,
+        observedAt: DateTime.utc(2026, 8, 31, 9),
+      );
+
+      final resolved = await manager.resolveUnknownViaHealth();
+
+      expect(resolved.state, WebLibreRuntimeState.stopped);
+      expect(manager.bound, isNull);
+      final next = await manager.launch(profileOf('p2', 'browser-$uuidB'));
+      expect(next.browserProfileId, uuidB);
+    });
+
+    test('health 存活但会话身份过期 → 按死亡处理（fail-closed）', () async {
+      final binder = RecordingBinder();
+      final manager = await unknownManager(binder);
+      binder.healthResult = WebLibreRuntimeHealth(
+        alive: true,
+        browserProfileId: uuidA,
+        sessionId: 'rs-stale',
+        generation: 99,
+        observedAt: DateTime.utc(2026, 8, 31, 9),
+      );
+
+      final resolved = await manager.resolveUnknownViaHealth();
+
+      expect(resolved.state, WebLibreRuntimeState.stopped, reason: '过期观测不可信，宁死勿混');
+      expect(manager.bound, isNull);
+    });
+  });
+
+  group('generation 原子分配（ADR-007）', () {
+    test('并发 allocateSession 得到严格不同的 generation', () async {
+      final now = DateTime.utc(2026, 8, 31, 9);
+      final results = await Future.wait(<Future<BrowserRuntimeSession>>[
+        sessions.allocateSession(
+            id: 'rs-a', mobileProfileId: 'p1', browserProfileId: uuidA,
+            state: 'starting', startedAt: now),
+        sessions.allocateSession(
+            id: 'rs-b', mobileProfileId: 'p1', browserProfileId: uuidA,
+            state: 'starting', startedAt: now),
+        sessions.allocateSession(
+            id: 'rs-c', mobileProfileId: 'p1', browserProfileId: uuidA,
+            state: 'starting', startedAt: now),
+      ]);
+      final generations = results.map((s) => s.generation).toSet();
+      expect(generations, {1, 2, 3}, reason: '无重复且连续');
     });
   });
 }

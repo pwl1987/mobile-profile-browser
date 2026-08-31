@@ -61,6 +61,31 @@ void main() {
     expect(latest.state, 'running');
   });
 
+  test('allocateSession 在事务内原子分配 generation（并发不重复）', () async {
+    final now = DateTime.utc(2026, 8, 31, 9);
+    final results = await Future.wait(<Future<BrowserRuntimeSession>>[
+      for (var i = 0; i < 3; i++)
+        store.runtimeSessions.allocateSession(
+          id: 'rs-concurrent-$i',
+          mobileProfileId: profileId,
+          browserProfileId: browserId,
+          state: 'starting',
+          startedAt: now,
+        ),
+    ]);
+
+    final generations = results.map((s) => s.generation).toSet();
+    expect(generations, {1, 2, 3}, reason: '严格不同且连续（ADR-007）');
+    expect(results.every((s) => s.state == 'starting'), isTrue);
+
+    // 与既有会话衔接：下一次分配从最大值继续。
+    final next = await store.runtimeSessions.allocateSession(
+      id: 'rs-next', mobileProfileId: profileId, browserProfileId: browserId,
+      state: 'starting', startedAt: now,
+    );
+    expect(next.generation, 4);
+  });
+
   test('findClaimedAlive 只取声称存活状态（参数绑定 IN）', () async {
     await store.runtimeSessions.save(sessionOf('rs-1', 'stopped', 1));
     await store.runtimeSessions.save(sessionOf('rs-2', 'starting', 2));

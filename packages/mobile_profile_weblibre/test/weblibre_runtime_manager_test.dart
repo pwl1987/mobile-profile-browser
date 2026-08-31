@@ -13,17 +13,34 @@ final class RecordingGeckoBinder implements WebLibreGeckoBinder {
   Object? bindFailure;
 
   @override
-  Future<void> bind(String browserProfileId, String profileDir) async {
+  Future<void> bind(
+    String browserProfileId,
+    String profileDir, {
+    required String sessionId,
+    required int generation,
+  }) async {
     if (bindFailure != null) {
       throw bindFailure!;
     }
-    bindLog.add('$browserProfileId|$profileDir');
+    bindLog.add('$browserProfileId|$profileDir|$sessionId|$generation');
   }
 
   @override
-  Future<void> unbind(String browserProfileId) async {
+  Future<void> unbind(
+    String browserProfileId, {
+    required String sessionId,
+    required int generation,
+  }) async {
     unbindLog.add(browserProfileId);
   }
+
+  @override
+  Future<WebLibreRuntimeHealth> health(String browserProfileId) async =>
+      WebLibreRuntimeHealth(
+        alive: false,
+        browserProfileId: browserProfileId,
+        observedAt: DateTime.utc(2026, 8, 31, 9),
+      );
 }
 
 MobileProfile profileOf(String id, String browserRef) {
@@ -44,16 +61,19 @@ void main() {
   late Directory tempDir;
   late DirectoryWebLibreProfileStorage storage;
   late RecordingGeckoBinder binder;
+  late InMemoryBrowserRuntimeSessionRepository sessions;
   late WebLibreRuntimeManager manager;
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('mpb_weblibre_runtime_');
     storage = DirectoryWebLibreProfileStorage(tempDir.path);
     binder = RecordingGeckoBinder();
+    sessions = InMemoryBrowserRuntimeSessionRepository();
     manager = WebLibreRuntimeManager(
       storage: storage,
       binder: binder,
       filesDir: tempDir.path,
+      sessionStore: sessions,
     );
   });
 
@@ -70,8 +90,11 @@ void main() {
 
     expect(handle.state, WebLibreRuntimeState.running);
     expect(handle.browserProfileId, uuidA);
-    expect(binder.bindLog.single,
-        '$uuidA|${WebLibreProfilePaths.profileDir(tempDir.path, uuidA)}');
+    expect(
+      binder.bindLog.single,
+      startsWith('$uuidA|${WebLibreProfilePaths.profileDir(tempDir.path, uuidA)}|rs-'),
+      reason: '绑定调用携带目录与会话身份',
+    );
     expect(await storage.exists(uuidA), isTrue);
   });
 
@@ -127,10 +150,10 @@ void main() {
     expect(await storage.listBrowserProfileIds(), isEmpty);
   });
 
-  test('recoverAfterProcessRestart：持久化 running 经 unknown 收敛为 stopped 并释放槽位', () async {
+  test('recoverAfterApplicationProcessDeath：持久化 running 收敛为 stopped 并释放启动权', () async {
     await manager.launch(profileOf('p1', 'browser-$uuidA'));
 
-    final report = await manager.recoverAfterProcessRestart();
+    final report = await manager.recoverAfterApplicationProcessDeath();
 
     expect(report.recoveredSessions.single.$1, isNotEmpty);
     expect(manager.bound, isNull);
@@ -139,8 +162,8 @@ void main() {
     expect(next.browserProfileId, uuidB);
   });
 
-  test('recoverAfterProcessRestart：无绑定时为空操作', () async {
-    final report = await manager.recoverAfterProcessRestart();
+  test('无持久化会话时恢复为空操作', () async {
+    final report = await manager.recoverAfterApplicationProcessDeath();
     expect(report.isEmpty, isTrue);
   });
 }
