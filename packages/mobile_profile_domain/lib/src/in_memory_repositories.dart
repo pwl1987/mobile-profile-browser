@@ -1,4 +1,5 @@
 import 'browser_profile_entry.dart';
+import 'browser_runtime_session.dart';
 import 'mobile_profile.dart';
 import 'repositories.dart';
 
@@ -139,5 +140,32 @@ final class InMemoryBrowserProfileRepository implements BrowserProfileRepository
   @override
   Future<void> delete(String mobileProfileId) async {
     _byMobileProfileId.remove(mobileProfileId);
+  }
+}
+
+final class InMemoryBrowserRuntimeSessionRepository
+    implements BrowserRuntimeSessionRepository {
+  final Map<String, BrowserRuntimeSession> _sessions = <String, BrowserRuntimeSession>{};
+
+  @override
+  Future<BrowserRuntimeSession?> latestForProfile(String mobileProfileId) async {
+    BrowserRuntimeSession? latest;
+    for (final session in _sessions.values) {
+      if (session.mobileProfileId != mobileProfileId) continue;
+      if (latest == null || session.generation > latest.generation) {
+        latest = session;
+      }
+    }
+    return latest;
+  }
+
+  @override
+  Future<List<BrowserRuntimeSession>> findClaimedAlive() async => _sessions.values
+      .where((s) => kClaimedAliveSessionStates.contains(s.state))
+      .toList(growable: false);
+
+  @override
+  Future<void> save(BrowserRuntimeSession session) async {
+    _sessions[session.id] = session;
   }
 }

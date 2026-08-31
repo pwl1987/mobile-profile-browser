@@ -6,10 +6,10 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('全新数据库应用到 v2 并记录 schema_version', () async {
+  test('全新数据库应用到 v3 并记录 schema_version', () async {
     final store = await ProfileStore.openInMemory();
 
-    expect(store.schemaVersion, 2);
+    expect(store.schemaVersion, 3);
     await store.close();
   });
 
@@ -18,7 +18,7 @@ void main() {
     await store.close();
 
     final store2 = await ProfileStore.openInMemory();
-    expect(store2.schemaVersion, 2);
+    expect(store2.schemaVersion, 3);
     await store2.close();
   });
 
@@ -34,9 +34,9 @@ void main() {
     expect(storeV1.schemaVersion, 1);
     await storeV1.close();
 
-    // 用完整基线重开同一文件：v1 → v2 升级，既有数据完整。
+    // 用完整基线重开同一文件：v1 → v3 升级，既有数据完整。
     final store = await ProfileStore.open(dbPath);
-    expect(store.schemaVersion, 2);
+    expect(store.schemaVersion, 3);
     expect(await store.deviceProfiles.findById(OppoFindN3Profiles.china.id), isNotNull);
     await store.close();
 
@@ -48,28 +48,28 @@ void main() {
   });
 
   test('扩展迁移列表按版本递增应用', () async {
-    const v3 = StorageMigration(version: 3, statements: [
-      'CREATE TABLE m3_probe (id TEXT NOT NULL PRIMARY KEY)',
+    const v4 = StorageMigration(version: 4, statements: [
+      'CREATE TABLE m4_probe (id TEXT NOT NULL PRIMARY KEY)',
     ]);
     final store = await ProfileStore.openInMemory(
-      migrations: const [...StorageMigrations.baseline, v3],
+      migrations: const [...StorageMigrations.baseline, v4],
     );
 
-    expect(store.schemaVersion, 3);
+    expect(store.schemaVersion, 4);
     await store.close();
   });
 
   test('数据库版本高于代码已知版本时拒绝打开', () async {
-    const v3 = StorageMigration(version: 3, statements: [
-      'CREATE TABLE m3_probe (id TEXT NOT NULL PRIMARY KEY)',
+    const v4 = StorageMigration(version: 4, statements: [
+      'CREATE TABLE m4_probe (id TEXT NOT NULL PRIMARY KEY)',
     ]);
     final upgraded = await ProfileStore.openInMemory(
-      migrations: const [...StorageMigrations.baseline, v3],
+      migrations: const [...StorageMigrations.baseline, v4],
     );
-    // 取出底层句柄模拟“未来版本”数据库，交给只知道 v2 的代码打开。
+    // 取出底层句柄模拟“未来版本”数据库，交给只知道 v3 的代码打开。
     final db = sqlite3.openInMemory();
     db.execute('PRAGMA foreign_keys = ON');
-    StorageMigrations.apply(db, const [...StorageMigrations.baseline, v3], now: DateTime.now());
+    StorageMigrations.apply(db, const [...StorageMigrations.baseline, v4], now: DateTime.now());
     await upgraded.close();
 
     expect(

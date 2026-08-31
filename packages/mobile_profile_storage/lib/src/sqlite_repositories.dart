@@ -371,3 +371,72 @@ final class SqliteBrowserProfileRepository implements BrowserProfileRepository {
     );
   }
 }
+
+final class SqliteBrowserRuntimeSessionRepository
+    implements BrowserRuntimeSessionRepository {
+  SqliteBrowserRuntimeSessionRepository(this._db);
+
+  final Database _db;
+
+  @override
+  Future<BrowserRuntimeSession?> latestForProfile(String mobileProfileId) async {
+    final rows = _db.select(
+      'SELECT id, mobile_profile_id, browser_profile_id, state, generation, '
+      'started_at, updated_at FROM runtime_sessions '
+      'WHERE mobile_profile_id = ? ORDER BY generation DESC LIMIT 1',
+      [mobileProfileId],
+    );
+    return rows.isEmpty ? null : _fromRow(rows.first);
+  }
+
+  @override
+  Future<List<BrowserRuntimeSession>> findClaimedAlive() async {
+    // 集合元素为代码内常量（非外部输入），仍以参数绑定传入。
+    final placeholders =
+        List.filled(kClaimedAliveSessionStates.length, '?').join(', ');
+    final rows = _db.select(
+      'SELECT id, mobile_profile_id, browser_profile_id, state, generation, '
+      'started_at, updated_at FROM runtime_sessions '
+      'WHERE state IN ($placeholders)',
+      kClaimedAliveSessionStates.toList(),
+    );
+    return rows.map(_fromRow).toList(growable: false);
+  }
+
+  @override
+  Future<void> save(BrowserRuntimeSession session) async {
+    final stmt = _db.prepare(
+      'INSERT INTO runtime_sessions (id, mobile_profile_id, browser_profile_id, '
+      'state, generation, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) '
+      // 全量替换语义（ADR-003）。
+      'ON CONFLICT(id) DO UPDATE SET state = excluded.state, '
+      'generation = excluded.generation, started_at = excluded.started_at, '
+      'updated_at = excluded.updated_at, '
+      'browser_profile_id = excluded.browser_profile_id, '
+      'mobile_profile_id = excluded.mobile_profile_id',
+    );
+    try {
+      stmt.execute([
+        session.id,
+        session.mobileProfileId,
+        session.browserProfileId,
+        session.state,
+        session.generation,
+        _formatDate(session.startedAt),
+        _formatDate(session.updatedAt),
+      ]);
+    } finally {
+      stmt.dispose();
+    }
+  }
+
+  static BrowserRuntimeSession _fromRow(Row row) => BrowserRuntimeSession(
+        id: row['id'] as String,
+        mobileProfileId: row['mobile_profile_id'] as String,
+        browserProfileId: row['browser_profile_id'] as String,
+        state: row['state'] as String,
+        generation: row['generation'] as int,
+        startedAt: _parseDate(row['started_at'] as String),
+        updatedAt: _parseDate(row['updated_at'] as String),
+      );
+}
