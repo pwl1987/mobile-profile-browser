@@ -81,12 +81,18 @@ final class WebLibreRuntimeBindingError implements Exception {
 
 /// 一次进程死亡恢复的结论。
 final class RuntimeRecoveryReport {
-  const RuntimeRecoveryReport({required this.recoveredSessions});
+  const RuntimeRecoveryReport({
+    required this.recoveredSessions,
+    this.rehydratedSessionId,
+  });
 
   /// 被收敛的会话（id + 恢复前的持久化状态）。
   final List<(String sessionId, String previousState)> recoveredSessions;
 
-  bool get isEmpty => recoveredSessions.isEmpty;
+  /// Dart 重启后重建为 unknown 槽位的会话（ADR-007 Rehydration；无则 null）。
+  final String? rehydratedSessionId;
+
+  bool get isEmpty => recoveredSessions.isEmpty && rehydratedSessionId == null;
 }
 
 /// WebLibre Runtime 编排：目录存储 + 进程绑定 + 状态机 + 会话持久化。
@@ -110,6 +116,7 @@ final class WebLibreRuntimeManager {
     required String filesDir,
     BrowserRuntimeSessionRepository? sessionStore,
     DateTime Function()? clock,
+    this.healthMaxAge = const Duration(seconds: 30),
   })  : _filesDir = filesDir,
         _sessions = sessionStore,
         _clock = clock ?? (() => DateTime.now().toUtc());
@@ -119,6 +126,9 @@ final class WebLibreRuntimeManager {
   final String _filesDir;
   final BrowserRuntimeSessionRepository? _sessions;
   final DateTime Function() _clock;
+
+  /// health 观测的新鲜度上限（ADR-007）：超过视为过期观测，fail-closed。
+  final Duration healthMaxAge;
 
   WebLibreRuntimeHandle? _bound;
   Future<void> _lock = Future<void>.value();
@@ -143,11 +153,17 @@ final class WebLibreRuntimeManager {
 
   Future<WebLibreRuntimeHandle> launch(MobileProfile profile) =>
       _serialized(() async {
-        if (_bound != null) {
+        final current = _bound;
+        if (current != null) {
           throw WebLibreRuntimeBindingError(
-              '进程已绑定浏览器 Profile ${_bound!.browserProfileId}'
-              '${_bound!.state == WebLibreRuntimeState.unknown ? '（解绑结果未知，需先确认死亡）' : ''}；'
-              '切换前必须先 stop（上游 Gecko runtime 一次性绑定约束）');
+            current.state == WebLibreRuntimeState.unknown
+                ? '存在 unknown 状态的运行时槽位（${current.browserProfileId}；'
+                    '解绑结果未知或 Dart 重启遗留，Gecko 可能仍存活）：'
+                    '禁止新启动，先经健康检查裁决'
+                    '（resolveUnknownViaHealth / confirmUnknownDead）'
+                : '进程已绑定浏览器 Profile ${current.browserProfileId}；'
+                    '切换前必须先 stop（上游 Gecko runtime 一次性绑定约束）',
+          );
         }
 
         final browserProfileId = WebLibreProfileMapper.browserProfileIdOf(profile);
@@ -298,24 +314,58 @@ final class WebLibreRuntimeManager {
 
   /// **Dart engine 重启、应用进程未死**时的恢复（ADR-007 之二）。
   ///
-  /// Gecko 可能仍存活（Flutter engine 重建等），**禁止**假设死亡：
-  /// 声称存活会话只降级 unknown 落盘，裁决交给实际真相观测
-  /// （Binder health → resolveUnknownViaHealth / confirmUnknown*）。
-  /// 返回降级后的 unknown 会话清单；槽位保持空（旧 `_bound` 随
-  /// Dart heap 消失，新实例无从恢复内存态）。
-  Future<RuntimeRecoveryReport> recoverAfterDartRestart() => _serialized(() async {
-        final degraded = <(String, String)>[];
+  /// Gecko 可能仍存活（Flutter engine 重建等），禁止假设死亡：
+  /// - 取持久化声称存活会话中**最新**的一条 **Rehydration** 为 unknown
+  ///   槽位：继续占用逻辑上的独占绑定槽位、阻止新 launch，裁决交给
+  ///   实际真相观测（`resolveUnknownViaHealth` / confirmUnknown*）；
+  /// - 其余较旧的声称存活会话按单槽位不变量收敛 stopped——单绑定约束
+  ///   下同一时刻至多一个真实运行时，更早的会话必然已死。
+  Future<RuntimeRecoveryReport> recoverAfterDartRestart() =>
+      _serialized(() async {
+        final converged = <(String, String)>[];
         final claimed =
             await _sessions?.findClaimedAlive() ?? const <BrowserRuntimeSession>[];
-        for (final session in claimed) {
+        if (claimed.isEmpty) {
+          _bound = null;
+          return const RuntimeRecoveryReport(recoveredSessions: <(String, String)>[]);
+        }
+
+        final ordered = [...claimed]..sort((a, b) {
+            final byTime = b.updatedAt.compareTo(a.updatedAt);
+            if (byTime != 0) return byTime;
+            final byGeneration = b.generation.compareTo(a.generation);
+            if (byGeneration != 0) return byGeneration;
+            return b.id.compareTo(a.id);
+          });
+        final candidate = ordered.first;
+
+        for (final session in ordered.skip(1)) {
           await _sessions?.save(session.copyWith(
             state: WebLibreRuntimeState.unknown.name,
             updatedAt: _clock(),
           ));
-          degraded.add((session.id, session.state));
+          await _sessions?.save(session.copyWith(
+            state: WebLibreRuntimeState.stopped.name,
+            updatedAt: _clock(),
+          ));
+          converged.add((session.id, session.state));
         }
-        _bound = null;
-        return RuntimeRecoveryReport(recoveredSessions: degraded);
+
+        await _sessions?.save(candidate.copyWith(
+          state: WebLibreRuntimeState.unknown.name,
+          updatedAt: _clock(),
+        ));
+        _bound = WebLibreRuntimeHandle(
+          profileId: candidate.mobileProfileId,
+          browserProfileId: candidate.browserProfileId,
+          state: WebLibreRuntimeState.unknown,
+          sessionId: candidate.id,
+          generation: candidate.generation,
+        );
+        return RuntimeRecoveryReport(
+          recoveredSessions: converged,
+          rehydratedSessionId: candidate.id,
+        );
       });
 
   /// 对 unknown 槽位的健康裁决：确认仍存活（Gecko 仍在响应该 Profile）。
@@ -341,9 +391,10 @@ final class WebLibreRuntimeManager {
 
   /// 用 Binder health（实际真相）自动裁决 unknown 槽位（ADR-007）。
   ///
-  /// - health.alive 且会话身份匹配 → running（继续持有槽位，走正常 stop）；
-  /// - health.alive 但会话身份不匹配 → 过期观测，按死亡处理（fail-closed）；
-  /// - !alive → stopped 并释放槽位。
+  /// 可信判定 fail-closed（`_isTrustedHealth`）：alive + browserProfileId
+  /// + sessionId + generation + 新鲜度**全部满足**才回 running；
+  /// 身份缺失（含 sessionId 为空）、不匹配、观测过期或时钟超前一律
+  /// 按 stopped 处理并释放槽位。
   Future<WebLibreRuntimeHandle> resolveUnknownViaHealth() => _serialized(() async {
         final current = _bound;
         if (current == null) {
@@ -354,11 +405,7 @@ final class WebLibreRuntimeManager {
               '仅 unknown 状态可健康裁决，当前为 ${current.state.name}');
         }
         final health = await binder.health(current.browserProfileId);
-        final trusted = health.alive &&
-            (health.sessionId.isEmpty ||
-                (health.sessionId == current.sessionId &&
-                    health.generation == current.generation));
-        if (trusted) {
+        if (_isTrustedHealth(health, current)) {
           final handle = WebLibreRuntimeController.transition(
               current, WebLibreRuntimeState.running);
           _bound = handle;
@@ -371,6 +418,19 @@ final class WebLibreRuntimeManager {
         await _persist(current, WebLibreRuntimeState.stopped);
         return handle;
       });
+
+  /// health 观测的可信判定（fail-closed，缺一不可）。
+  bool _isTrustedHealth(
+      WebLibreRuntimeHealth health, WebLibreRuntimeHandle current) {
+    if (!health.alive) return false;
+    if (health.browserProfileId != current.browserProfileId) return false;
+    if (health.sessionId.isEmpty) return false;
+    if (health.sessionId != current.sessionId) return false;
+    if (health.generation != current.generation) return false;
+    final now = _clock();
+    if (health.observedAt.isAfter(now)) return false; // 时钟超前不可信
+    return !health.observedAt.isBefore(now.subtract(healthMaxAge));
+  }
 
   /// 旧 Runtime 回调守卫：仅当前活跃会话（id 与 generation 都匹配）的
   /// 回调可被接受，过期回调一律丢弃（防旧回调误杀新会话）。

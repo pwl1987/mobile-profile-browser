@@ -14,9 +14,13 @@
 | M3.3 Real WebLibre Runtime | ✅ 编排层（PR #5） | 目录布局/状态机/进程绑定管理 + ADR-004 unknown 恢复语义 |
 | M3.4.2 Runtime Hardening | ✅（PR #9/#10） | fail-closed 解绑 / 操作互斥 / generation / 会话持久化 v3 / 删除残留防护（ADR-006） |
 | M3.4.2.5 Integration Readiness | ✅ | 状态所有权三层 / generation 原子分配 / 恢复语义三分 / Binder health 契约（ADR-007） |
+| M3.4.2.6 Rehydration 补丁 | ✅ | Dart 重启 unknown 重建槽位 + health 可信判定 fail-closed + freshness（ADR-007 补遗） |
 | M3.4 Real Runtime Integration | 🔨 进行中 | Binder/补丁/真机验收；runbook 见 tools/device/README.md |
 
 ## Next（按里程碑命名追踪，不绑定仓库 PR 号）
+
+**PR-B 前置已冻结（ADR-007 补遗）**：Rehydration ✅ → Health Trust ✅ →
+Real Binder → MethodChannel → v4 migration。
 
 1. **PR-B RealWebLibreGeckoBinder**：Binder health/runtimeInfo 的 Android
    实现 + MethodChannel（落在 vendor 应用内的 Android 侧，不进纯 Dart 包；
@@ -27,6 +31,10 @@
    app_zh.arb，i18n CI 升级为 ARB 完整性 + 硬编码扫描。
 3. **PR-D 真实 Profile 生命周期**：创建/启动/停止/删除/重建全链路。
 4. **PR-E Find N3 真机验收**：Cookie 隔离 + 折叠矩阵 + am kill/低内存回收。
+
+备注（工程规则 vs 平台强制）：8/8 全绿是团队硬规则；GitHub 侧 develop
+尚未配置 Branch Protection/required status checks，二者不混为一谈，
+是否启用由技术负责人裁定。
 
 ## 中文优先（一级要求，2026-08-31 起）
 

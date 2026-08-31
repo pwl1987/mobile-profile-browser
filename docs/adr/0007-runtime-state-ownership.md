@@ -1,6 +1,7 @@
 # ADR-007：Runtime 状态所有权与接入前边界
 
-日期：2026-08-31 · 状态：已接受（M3.4.2.5 Runtime Integration Readiness）
+日期：2026-08-31 · 状态：已接受（M3.4.2.5 Runtime Integration Readiness；
+Rehydration 与 health 可信判定为同日实施补遗，见文末）
 
 ## 一、状态所有权：三层真相，不得混同
 
@@ -73,7 +74,38 @@ runtime_owner    运行时宿主标识（当前恒为应用进程；未来 Gecko
 
 在需要真实数据之前不做 v4——不为尚无数据来源的字段提前开列。
 
-## 六、M3 Gate 状态（本 ADR 生效时）
+## 六、Dart 重启后的 Rehydration（实施补遗，修复闭环漏洞）
+
+初版实现只把持久化降级为 unknown 而 `_bound = null`——导致 launch 仅凭
+内存态放行新 Profile（unknown 不设防），且 `resolveUnknownViaHealth`
+因槽位为空永远无法执行。修正后的 Rehydration 链：
+
+```text
+Dart Restart
+   ↓ 从 runtime_sessions 恢复声称存活会话
+   ↓ 最新一条 → 重建为 unknown 槽位（继续独占，禁止新 launch）
+   ↓ 其余较旧声称存活会话 → 收敛 stopped（单槽位不变量：至多一个真实运行时）
+   ↓ Binder health()
+   ↓ 可信判定（见七）
+alive+可信 → running    不可信/死亡 → stopped → 释放槽位
+```
+
+## 七、health 可信判定（fail-closed，缺一不可）
+
+初版允许 `sessionId` 为空的 alive 观测通过、且未校验新鲜度——把
+"缺数据"当成了"可信数据"。修正后的规则：
+
+```text
+alive == true
+AND browserProfileId == 当前槽位
+AND sessionId 非空且 == 当前会话
+AND generation == 当前代际
+AND observedAt <= now（时钟超前不可信）
+AND observedAt >= now - healthMaxAge（默认 30s，构造参数可调）
+→ 可信 → running；任一不满足 → stopped（fail-closed）
+```
+
+## 八、M3 Gate 状态（本 ADR 生效时）
 
 M3 尚未完成：generation 已强化、恢复语义已三分；待办——Real Gecko
 Binder / MethodChannel / 中文产品 UI / Find N3 真机。

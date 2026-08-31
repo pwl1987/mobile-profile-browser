@@ -108,12 +108,16 @@ void main() {
     RecordingBinder binder, {
     WebLibreProfileStorage? store,
     BrowserRuntimeSessionRepository? sessionStore,
+    DateTime Function()? clock,
+    Duration? healthMaxAge,
   }) =>
       WebLibreRuntimeManager(
         storage: store ?? storage,
         binder: binder,
         filesDir: tempDir.path,
         sessionStore: sessionStore,
+        clock: clock,
+        healthMaxAge: healthMaxAge ?? const Duration(seconds: 30),
       );
 
   group('fail-closed 解绑（ADR-006）', () {
@@ -289,7 +293,7 @@ void main() {
       expect(relaunched.generation, handle.generation + 1);
     });
 
-    test('Dart 重启（进程未死）：只降级 unknown，禁止自动判死', () async {
+    test('Dart 重启（进程未死）：Rehydration 为 unknown 槽位，禁止自动判死', () async {
       final binderA = RecordingBinder();
       final managerA = managerOf(binderA, sessionStore: sessions);
       final handle = await managerA.launch(profileOf('p1', 'browser-$uuidA'));
@@ -300,7 +304,9 @@ void main() {
 
       final report = await managerB.recoverAfterDartRestart();
 
-      expect(report.recoveredSessions.single, (handle.sessionId, 'running'));
+      expect(report.rehydratedSessionId, handle.sessionId,
+          reason: 'unknown 候选必须重建为槽位（ADR-007 补遗）');
+      expect(managerB.bound!.state, WebLibreRuntimeState.unknown);
       final after = await sessions.latestForProfile('p1');
       expect(after!.state, 'unknown', reason: 'Gecko 可能仍存活，裁决交给健康检查');
       expect(await sessions.findClaimedAlive().then((l) => l.length), 1,
@@ -350,16 +356,26 @@ void main() {
   });
 
   group('unknown 槽位的健康裁决（实际真相观测）', () {
-    Future<WebLibreRuntimeManager> unknownManager(RecordingBinder binder) async {
+    final fakeNow = DateTime.utc(2026, 8, 31, 12);
+
+    Future<WebLibreRuntimeManager> unknownManager(
+      RecordingBinder binder, {
+      Duration? healthMaxAge,
+    }) async {
       binder.unbindFailure = StateError('gecko hang');
-      final manager = managerOf(binder, sessionStore: sessions);
+      final manager = managerOf(
+        binder,
+        sessionStore: sessions,
+        clock: () => fakeNow,
+        healthMaxAge: healthMaxAge,
+      );
       await manager.launch(profileOf('p1', 'browser-$uuidA'));
       await expectLater(manager.stop(), throwsA(isA<WebLibreRuntimeBindingError>()));
       expect(manager.bound!.state, WebLibreRuntimeState.unknown);
       return manager;
     }
 
-    test('health 存活且会话身份匹配 → running 继续持有', () async {
+    test('health 存活且会话身份匹配、观测新鲜 → running 继续持有', () async {
       final binder = RecordingBinder();
       final manager = await unknownManager(binder);
       final bound = manager.bound!;
@@ -370,7 +386,7 @@ void main() {
         sessionId: bound.sessionId,
         generation: bound.generation,
         pid: 4242,
-        observedAt: DateTime.utc(2026, 8, 31, 9),
+        observedAt: fakeNow,
       );
 
       final resolved = await manager.resolveUnknownViaHealth();
@@ -390,7 +406,7 @@ void main() {
       binder.healthResult = WebLibreRuntimeHealth(
         alive: false,
         browserProfileId: uuidA,
-        observedAt: DateTime.utc(2026, 8, 31, 9),
+        observedAt: fakeNow,
       );
 
       final resolved = await manager.resolveUnknownViaHealth();
@@ -409,7 +425,7 @@ void main() {
         browserProfileId: uuidA,
         sessionId: 'rs-stale',
         generation: 99,
-        observedAt: DateTime.utc(2026, 8, 31, 9),
+        observedAt: fakeNow,
       );
 
       final resolved = await manager.resolveUnknownViaHealth();
