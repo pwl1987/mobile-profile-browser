@@ -132,6 +132,39 @@ void main() {
         throwsA(isA<WebLibreRuntimeBindingError>()),
       );
     });
+
+    test('健康裁决"仍存活"：unknown 回到 running 并继续持有槽位', () async {
+      final binder = RecordingBinder()..unbindFailure = StateError('gecko hang');
+      final manager = managerOf(binder, sessionStore: sessions);
+      await manager.launch(profileOf('p1', 'browser-$uuidA'));
+      await expectLater(manager.stop(), throwsA(isA<WebLibreRuntimeBindingError>()));
+      expect(manager.bound!.state, WebLibreRuntimeState.unknown);
+
+      // 健康检查发现 Gecko 仍在响应：回到 running，继续持有槽位。
+      final alive = await manager.confirmUnknownAlive();
+      expect(alive.state, WebLibreRuntimeState.running);
+      expect(manager.bound!.browserProfileId, uuidA);
+      expect((await sessions.latestForProfile('p1'))!.state, 'running');
+
+      // 恢复后走正常 stop（故障解除）成功释放。
+      binder.unbindFailure = null;
+      final stopped = await manager.stop();
+      expect(stopped.state, WebLibreRuntimeState.stopped);
+      expect(manager.bound, isNull);
+      final next = await manager.launch(profileOf('p2', 'browser-$uuidB'));
+      expect(next.browserProfileId, uuidB);
+    });
+
+    test('confirmUnknownAlive 只接受 unknown 状态', () async {
+      final binder = RecordingBinder();
+      final manager = managerOf(binder, sessionStore: sessions);
+      await manager.launch(profileOf('p1', 'browser-$uuidA'));
+
+      await expectLater(
+        manager.confirmUnknownAlive(),
+        throwsA(isA<WebLibreRuntimeBindingError>()),
+      );
+    });
   });
 
   group('操作互斥（check-then-act 竞态）', () {
