@@ -20,22 +20,32 @@ final class WebLibreRuntimeStateError implements Exception {
 }
 
 /// Runtime 句柄：只携带标识与状态，不持有 Gecko/Flutter 运行时对象。
+///
+/// [sessionId]/[generation] 标识本次启动对应的持久化会话（ADR-006）：
+/// Android 侧回调必须携带同值并经 `isCurrentSession` 校验，过期回调
+/// 一律丢弃。未接入会话持久化的早期用法可省略（默认空串/0）。
 final class WebLibreRuntimeHandle {
   const WebLibreRuntimeHandle({
     required this.profileId,
     required this.browserProfileId,
     required this.state,
+    this.sessionId = '',
+    this.generation = 0,
   });
 
   final String profileId;
   final String browserProfileId;
   final WebLibreRuntimeState state;
+  final String sessionId;
+  final int generation;
 
   WebLibreRuntimeHandle withState(WebLibreRuntimeState next) =>
       WebLibreRuntimeHandle(
         profileId: profileId,
         browserProfileId: browserProfileId,
         state: next,
+        sessionId: sessionId,
+        generation: generation,
       );
 }
 

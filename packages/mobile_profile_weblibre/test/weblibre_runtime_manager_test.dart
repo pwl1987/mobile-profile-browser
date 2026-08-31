@@ -127,20 +127,20 @@ void main() {
     expect(await storage.listBrowserProfileIds(), isEmpty);
   });
 
-  test('recoverAfterRestart：持久化 running 经 unknown 收敛为 stopped 并释放槽位', () async {
+  test('recoverAfterProcessRestart：持久化 running 经 unknown 收敛为 stopped 并释放槽位', () async {
     await manager.launch(profileOf('p1', 'browser-$uuidA'));
 
-    final recovered = await manager.recoverAfterRestart();
+    final report = await manager.recoverAfterProcessRestart();
 
-    expect(recovered!.state, WebLibreRuntimeState.stopped);
-    expect(recovered.browserProfileId, uuidA);
+    expect(report.recoveredSessions.single.$1, isNotEmpty);
     expect(manager.bound, isNull);
     // 槽位已释放，可以直接 launch 另一个 Profile。
     final next = await manager.launch(profileOf('p2', 'browser-$uuidB'));
     expect(next.browserProfileId, uuidB);
   });
 
-  test('recoverAfterRestart：无绑定时为空操作', () async {
-    expect(await manager.recoverAfterRestart(), isNull);
+  test('recoverAfterProcessRestart：无绑定时为空操作', () async {
+    final report = await manager.recoverAfterProcessRestart();
+    expect(report.isEmpty, isTrue);
   });
 }

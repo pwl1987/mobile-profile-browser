@@ -106,7 +106,29 @@ final class StorageMigrations {
       'CREATE INDEX idx_browser_profiles_browser_id ON browser_profiles (browser_profile_id)',
     ]);
 
-  static const List<StorageMigration> baseline = <StorageMigration>[v1, v2];
+  /// v3（M3.4.2 Runtime Hardening）：浏览器 Runtime 会话表（ADR-006）。
+  ///
+  /// 进程死亡恢复的持久化真相来源：启动前落盘 STARTING，状态迁移逐次
+  /// 落盘；generation 随 Profile 单调递增，防旧回调污染新会话。
+  /// 历史会话保留（审计），Profile 删除时级联清理。
+  static const StorageMigration v3 = StorageMigration(version: 3, statements: <String>[
+      '''
+      CREATE TABLE runtime_sessions (
+        id TEXT NOT NULL PRIMARY KEY,
+        mobile_profile_id TEXT NOT NULL,
+        browser_profile_id TEXT NOT NULL,
+        state TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        started_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CONSTRAINT fk_runtime_session_profile
+          FOREIGN KEY (mobile_profile_id) REFERENCES profiles (id) ON DELETE CASCADE
+      )
+      ''',
+      'CREATE INDEX idx_runtime_sessions_profile ON runtime_sessions (mobile_profile_id, generation)',
+    ]);
+
+  static const List<StorageMigration> baseline = <StorageMigration>[v1, v2, v3];
 
   static int databaseVersion(Database db) {
     try {
