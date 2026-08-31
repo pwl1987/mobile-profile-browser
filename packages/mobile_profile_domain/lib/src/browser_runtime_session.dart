@@ -56,4 +56,18 @@ abstract interface class BrowserRuntimeSessionRepository {
 
   /// 全量替换语义（与其它仓储契约一致，ADR-003）。
   Future<void> save(BrowserRuntimeSession session);
+
+  /// 原子分配并落盘一个新会话：generation 由持久化层在事务内取
+  /// `MAX(generation)+1`（ADR-007）。
+  ///
+  /// 调用方（Manager）**禁止**自行读 latestForProfile 后 +1——并发
+  /// Manager 交错时会分配到重复 generation。初始 state 由调用方传入
+  /// （启动意图为 `starting`）。
+  Future<BrowserRuntimeSession> allocateSession({
+    required String id,
+    required String mobileProfileId,
+    required String browserProfileId,
+    required String state,
+    required DateTime startedAt,
+  });
 }

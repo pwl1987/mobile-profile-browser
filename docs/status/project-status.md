@@ -12,19 +12,21 @@
 | M3.1 Browser Profile Contract | ✅ 2026-08-30 | PR #4，映射/绑定/隔离契约 CI 化 |
 | M3.2 Isolation Contract Test | ✅ 2026-08-30 | browser_profile_isolation_test 常驻 CI |
 | M3.3 Real WebLibre Runtime | ✅ 编排层（PR #5） | 目录布局/状态机/进程绑定管理 + ADR-004 unknown 恢复语义 |
-| M3.4.2 Runtime Hardening | ✅（PR #9） | fail-closed 解绑 / 操作互斥 / generation / 会话持久化 v3 / 删除残留防护（ADR-006） |
+| M3.4.2 Runtime Hardening | ✅（PR #9/#10） | fail-closed 解绑 / 操作互斥 / generation / 会话持久化 v3 / 删除残留防护（ADR-006） |
+| M3.4.2.5 Integration Readiness | ✅ | 状态所有权三层 / generation 原子分配 / 恢复语义三分 / Binder health 契约（ADR-007） |
 | M3.4 Real Runtime Integration | 🔨 进行中 | Binder/补丁/真机验收；runbook 见 tools/device/README.md |
 
-## Next
+## Next（按里程碑命名追踪，不绑定仓库 PR 号）
 
-1. M3.4.3（PR #10）：`RealWebLibreGeckoBinder` + MethodChannel 桥（落在
-   vendor 应用内的 Android 侧，不进纯 Dart 包；Binder 只做 Gecko 操作，
-   不得知道 SQLite/Repository/NetworkRoute）+
-   `patches/b4721ae6/001-add-mobile-profile-dependencies.patch`。
-2. M3.4.4（PR #11）：中文产品 UI（首页/Profile 列表/创建编辑/启停/
-   设置）+ app_zh.arb，i18n CI 升级为 ARB 完整性 + 硬编码扫描。
-3. M3.4.5（PR #12）：Find N3 真机验收——创建/启动/停止/删除/重建全
-   生命周期 + Cookie 隔离 + 折叠矩阵 + am kill/低内存回收。
+1. **PR-B RealWebLibreGeckoBinder**：Binder health/runtimeInfo 的 Android
+   实现 + MethodChannel（落在 vendor 应用内的 Android 侧，不进纯 Dart 包；
+   Binder 只做 Gecko 操作，不得知道 SQLite/Repository/NetworkRoute）+
+   `patches/b4721ae6/001-add-mobile-profile-dependencies.patch`；随接线
+   落 runtime_sessions v4（last_known_pid / runtime_owner）。
+2. **PR-C 中文产品 UI**：首页/Profile 列表/创建编辑/启停/设置 +
+   app_zh.arb，i18n CI 升级为 ARB 完整性 + 硬编码扫描。
+3. **PR-D 真实 Profile 生命周期**：创建/启动/停止/删除/重建全链路。
+4. **PR-E Find N3 真机验收**：Cookie 隔离 + 折叠矩阵 + am kill/低内存回收。
 
 ## 中文优先（一级要求，2026-08-31 起）
 
@@ -55,5 +57,7 @@ Gecko 单绑定约束 ⇒ 产品是**多 Profile 管理浏览环境**，不是�
 
 ## 质量基线
 
-七个 CI 工作流全绿是合入 develop 的硬条件；本地预检五包 103 测试
+**八个 CI 工作流全绿是合入 develop 的硬条件**（android-m1 / domain-test /
+domain-quality / integration-test / storage-test / browser-adapter-test /
+weblibre-runtime-test / i18n-quality）。本地预检五包测试
 （Dart 3.13.1，`.tools/dart-sdk`）。
