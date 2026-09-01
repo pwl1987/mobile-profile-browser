@@ -52,14 +52,6 @@ armProfileRestart / completeProfileRestart。**bind/unbind 的原生执行
 - 事件（EventChannel `weblibre/runtime_bridge/events`）：
   `{event, browserProfileId, sessionId, generation}`——双重 fencing。
 
-### health 的 runtimeAlive 现状（钉死，不许假装）
-
-当前实现口径 = **绑定存在性探测**（StartupArbiter currentState +
-committedProfileId + boundProfileFolder 非空且匹配），**不是 Gecko
-runtime 心跳**。`arbiter=COMMITTED ∧ Gecko 已死` 的窗口内会被报为
-alive——真机阶段（B.3）必须补真实 Gecko 探测（EngineProvider/session
-ping），在此之前 health 结果只作为 unknown 裁决输入，不作为唯一依据。
-
 ### 切换事务（硬规则：禁止运行时 rebind）
 
 ```text
@@ -74,16 +66,58 @@ stop(A) → launch(B)
 
 中途任何失败都不会把 A 标 stopped、B 标 running：A 的会话由 stop 正常
 收敛；B 的会话停在 restart_pending（声称存活集合成员），由下一进程裁决。
+旧会话收敛为 stopped 的前提限定于当前单 Runtime（runtime_owner=应用
+进程）架构假设；Gecko 进程独立化后此规则必须重新评估。
+
+### health 的 bindingPresent 与 runtimeAlive（B.2-b 硬 Gate：命名区分）
+
+协议字段（Kotlin `RuntimeBridgePlugin` 已按此实现）：
+
+```text
+bindingPresent : bool   —— StartupArbiter 提交 + 绑定目录存在（系统认为已绑定）
+probeKind      : string —— 当前 "binding_presence"；B.3 升级 Gecko 真实探测后为 "gecko_runtime"
+runtimeAlive   : （真实探测就绪前不返回该字段，绝不以 bindingPresent 冒充）
+alive          : 过渡期 = bindingPresent，且 probeKind 明示其来源
+```
+
+**在 probeKind 变为 gecko_runtime 之前，alive 不代表 Gecko runtime 存活。**
+`COMMITTED ∧ Gecko 已死` 的窗口内会误报——B.3 真机验收前必须替换为真实
+探测，这是 Gate 条件。
+
+### 会话身份重建链（B.3 真机验收前置，B.2-b 已落 Kotlin）
+
+```text
+进程重启（切换事务后）
+  ↓ bridge 内存身份丢失 → health 返回空身份 → Dart fail-closed 判死（旧会话，正确）
+  ↓ 新进程 bootstrap：StartupArbiter commit B → activate(B)
+  ↓ Dart 层读取 SQLite restart_pending 会话（持久化意图）
+  ↓ attachSessionIdentity(browserProfileId=B, sessionId, generation)
+  ↓ Kotlin 核验：StartupArbiter.committedProfileId == B 才接受（拒绝伪造）
+  ↓ health 携带身份 → Dart 可信判定（四元组+freshness）→ running
+```
+
+不重建该链会出现"Gecko 启动成功但 Dart 判死"。桥的内存身份是执行层
+单值状态，不是数据库。
+
+### unbind 应答顺序（P0 集成测试点）
+
+`RuntimeBridgePlugin.handleUnbind`：**先 `result.success({result: exiting})`
+（主线程同步写出应答字节），再把 `completeProfileRestart()`（内部
+exitProcess(0)）投递到主线程队列末尾**——保证应答先于进程退出送达，
+Dart 的 await 不得悬挂。该顺序是 B.3 真机集成测试必测点。
 
 ## 四、PR-B 分片（技术负责人裁定顺序）
 
 | 分片 | 内容 | 状态 |
 | --- | --- | --- |
 | B.1 | 通道契约 + RealWebLibreGeckoBinder（Dart 侧） | ✅ PR #13 |
-| B.2-a | bind 契约返回 BindOutcome + restartPending 事务模型 + 测试 | 🔨 本轮 |
-| B.2-b | Kotlin bridge（health 探测 + bind/unbind 薄转发）+ Dart glue + 001/002 补丁 + patched 编译 CI | ⏳ |
-| B.3 | patched APK 打通 + 真机切换/Cookie 隔离验收 | ⏳ |
+| B.2-a | bind 契约返回 BindOutcome + restartPending 事务模型 + 测试 | ✅ PR #14 |
+| B.2-b | Kotlin RuntimeBridgePlugin（bind/unbind/health/attachSessionIdentity）+ Dart glue + 001/002 补丁 + android-bridge CI | 🔨 本轮 |
+| B.3 | patched APK 真机验收：切换重启事务 + Cookie 隔离 + 身份重建链 + unbind 顺序 | ⏳ |
 | B.4 | runtime_sessions v4（last_known_pid / runtime_owner）——仅在真实数据来源就绪后 | ⏳ |
+
+android-m1 保持**纯上游基线**验证；android-bridge = 上游 + 001/002 +
+bridge。不为 CI 绿修改 android-m1。
 
 ## 五、边界（继续有效）
 

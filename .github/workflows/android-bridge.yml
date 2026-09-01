@@ -1,0 +1,154 @@
+name: M3 Bridge 打补丁构建
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  android-bridge:
+    name: 上游 + 001/002 补丁构建
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库与子模块
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: 释放磁盘空间
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
+      - name: 设置 Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 设置 Go 1.25
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: false
+
+      - name: 安装 Android NDK
+        run: |
+          set -euo pipefail
+          NDK_VERSION="$(sed -n 's/^weblibre\.ndkVersion[[:space:]]*=[[:space:]]*//p' vendor/weblibre/apps/weblibre/android/gradle.properties)"
+          test -n "$NDK_VERSION"
+          set +e
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
+          sdkmanager_status=${PIPESTATUS[1]}
+          set -e
+          if [[ $sdkmanager_status -ne 0 ]]; then
+            exit "$sdkmanager_status"
+          fi
+          test -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties"
+          {
+            echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION"
+            echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION"
+            echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION"
+          } >> "$GITHUB_ENV"
+
+      - name: 设置 Flutter 3.47.1
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+
+      - name: 核验并准备 WebLibre 工作树
+        run: bash ./tools/prepare-weblibre-worktree.sh
+
+      - name: 应用 Mobile Profile 补丁（001/002）
+        run: |
+          set -euo pipefail
+          git -C vendor/weblibre apply --check ../../patches/b4721ae6/001-add-mobile-profile-dependencies.patch
+          git -C vendor/weblibre apply --check ../../patches/b4721ae6/002-add-profile-runtime-bridge.patch
+          git -C vendor/weblibre apply ../../patches/b4721ae6/001-add-mobile-profile-dependencies.patch
+          git -C vendor/weblibre apply ../../patches/b4721ae6/002-add-profile-runtime-bridge.patch
+          echo "已应用 001/002 补丁"
+
+      - name: 获取 WebLibre 依赖
+        working-directory: vendor/weblibre
+        run: dart pub get
+
+      - name: 准备原生运行时源码
+        run: |
+          set -euo pipefail
+          source vendor/weblibre/native/go_mobile_runtime/pins.env
+
+          git clone https://github.com/SagerNet/sing-box.git "$RUNNER_TEMP/sing-box"
+          git -C "$RUNNER_TEMP/sing-box" checkout "$SING_BOX_TAG"
+          test "$(git -C "$RUNNER_TEMP/sing-box" rev-parse HEAD)" = "$SING_BOX_COMMIT"
+
+          git clone https://github.com/tladesignz/IPtProxy.git "$RUNNER_TEMP/IPtProxy"
+          git -C "$RUNNER_TEMP/IPtProxy" checkout "$IPTPROXY_TAG"
+          git -C "$RUNNER_TEMP/IPtProxy" submodule update --init dnstt
+          test "$(git -C "$RUNNER_TEMP/IPtProxy" rev-parse HEAD)" = "$IPTPROXY_COMMIT"
+
+      - name: 构建 WebLibre 原生 gomobile Runtime
+        env:
+          SING_BOX_SOURCE: ${{ runner.temp }}/sing-box
+          IPTPROXY_SOURCE: ${{ runner.temp }}/IPtProxy
+        run: bash vendor/weblibre/native/go_mobile_runtime/scripts/build-android.sh
+
+      - name: 静态分析打补丁后的应用（含 Runtime Bridge 与 Dart glue）
+        working-directory: vendor/weblibre/apps/weblibre
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+
+      - name: 构建 Android Debug APK（打补丁）
+        working-directory: vendor/weblibre/apps/weblibre
+        run: |
+          set -euo pipefail
+          rm -rf build/app/outputs/apk build/app/outputs/flutter-apk
+          set +e
+          flutter build apk --debug --no-pub
+          flutter_status=$?
+          set -e
+
+          # Flutter 3.47 在该上游基线上可能在 Gradle 已完成后无法识别 APK 输出。
+          # 以"存在 >1MB 的 APK"判定成功（同 android-m1）。
+          mapfile -t apks < <(find build -type f -name '*.apk' -size +1M -print | sort)
+          if (( ${#apks[@]} == 0 )); then
+            echo "未发现 APK，Flutter build 状态=$flutter_status" >&2
+            find build -maxdepth 8 -type f \( -name '*.apk' -o -name '*.aab' \) -print >&2 || true
+            exit "$flutter_status"
+          fi
+
+          if (( flutter_status != 0 )); then
+            echo "Flutter CLI 返回 $flutter_status，但已发现有效 APK；继续执行产物校验。"
+          fi
+
+          apk="${apks[0]}"
+          mkdir -p build/app/outputs/flutter-apk
+          cp "$apk" build/app/outputs/flutter-apk/app-debug.apk
+          ls -lh build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: 校验 APK 产物
+        working-directory: vendor/weblibre/apps/weblibre
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          echo "APK validation passed: $APK"
+
+      - name: 上传 Bridge Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-profile-browser-bridge-debug
+          path: vendor/weblibre/apps/weblibre/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
