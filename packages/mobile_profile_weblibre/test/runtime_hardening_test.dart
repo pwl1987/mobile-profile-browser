@@ -16,7 +16,7 @@ final class RecordingBinder implements WebLibreGeckoBinder {
   WebLibreRuntimeHealth? healthResult;
 
   @override
-  Future<void> bind(
+  Future<WebLibreBindOutcome> bind(
     String browserProfileId,
     String profileDir, {
     required String sessionId,
@@ -24,6 +24,8 @@ final class RecordingBinder implements WebLibreGeckoBinder {
   }) async {
     if (bindFailure != null) throw bindFailure!;
     bindLog.add('$browserProfileId|$sessionId|$generation');
+    return WebLibreBindOutcome(
+        restartRequired: false, targetProfile: browserProfileId);
   }
 
   @override
@@ -435,6 +437,64 @@ void main() {
     });
   });
 
+  group('切换事务（restart_pending，PR-B.2）', () {
+    test('bind 返回 restart_required → restartPending，不谎称 running', () async {
+      final binder = _RestartBinder();
+      final manager = managerOf(binder, sessionStore: sessions);
+
+      final handle = await manager.launch(profileOf('p1', 'browser-$uuidA'));
+
+      expect(handle.state, WebLibreRuntimeState.restartPending);
+      expect((await sessions.latestForProfile('p1'))!.state, 'restart_pending',
+          reason: '持久化停留在事务意图，由下一进程健康检查裁决');
+      expect(await sessions.findClaimedAlive(), isNotEmpty,
+          reason: '事务意图属于声称存活，恢复流程必须处理');
+    });
+
+    test('restartPending 期间 stop 被拒绝（进程即将退出）', () async {
+      final binder = _RestartBinder();
+      final manager = managerOf(binder, sessionStore: sessions);
+      await manager.launch(profileOf('p1', 'browser-$uuidA'));
+
+      await expectLater(
+        manager.stop(),
+        throwsA(isA<WebLibreRuntimeBindingError>()),
+      );
+    });
+
+    test('重启后事务意图经 Rehydration→健康检查落地为 running', () async {
+      final binderA = _RestartBinder();
+      final managerA = managerOf(binderA, sessionStore: sessions);
+      final handle = await managerA.launch(profileOf('p1', 'browser-$uuidA'));
+      expect(handle.state, WebLibreRuntimeState.restartPending);
+
+      // 进程重启：新实例共享会话存储（注入固定时钟配合 freshness 判定）。
+      final binderB = RecordingBinder();
+      binderB.healthResult = null;
+      final managerB = managerOf(
+        binderB,
+        sessionStore: sessions,
+        clock: () => DateTime.utc(2026, 8, 31, 12),
+      );
+      final report = await managerB.recoverAfterDartRestart();
+      expect(report.rehydratedSessionId, handle.sessionId);
+      expect(managerB.bound!.state, WebLibreRuntimeState.unknown);
+
+      // 新进程已 commit 目标 Profile 且存活、身份匹配 → running。
+      binderB.healthResult = WebLibreRuntimeHealth(
+        alive: true,
+        browserProfileId: uuidA,
+        sessionId: handle.sessionId,
+        generation: handle.generation,
+        pid: 4242,
+        observedAt: DateTime.utc(2026, 8, 31, 12),
+      );
+      final resolved = await managerB.resolveUnknownViaHealth();
+      expect(resolved.state, WebLibreRuntimeState.running);
+      expect((await sessions.latestForProfile('p1'))!.state, 'running');
+    });
+  });
+
   group('generation 原子分配（ADR-007）', () {
     test('并发 allocateSession 得到严格不同的 generation', () async {
       final now = DateTime.utc(2026, 8, 31, 9);
@@ -453,4 +513,22 @@ void main() {
       expect(generations, {1, 2, 3}, reason: '无重复且连续');
     });
   });
+}
+
+/// bind 恒返回 restart_required 的 Binder（切换事务场景）。
+final class _RestartBinder extends RecordingBinder {
+  @override
+  Future<WebLibreBindOutcome> bind(
+    String browserProfileId,
+    String profileDir, {
+    required String sessionId,
+    required int generation,
+  }) async {
+    bindLog.add('$browserProfileId|$sessionId|$generation');
+    return WebLibreBindOutcome(
+      restartRequired: true,
+      targetProfile: browserProfileId,
+      currentProfile: 'other-profile',
+    );
+  }
 }

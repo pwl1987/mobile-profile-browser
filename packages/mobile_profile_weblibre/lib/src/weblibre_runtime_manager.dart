@@ -5,9 +5,11 @@ import 'package:mobile_profile_domain/mobile_profile_domain.dart';
 
 import 'weblibre_profile_paths.dart';
 import 'weblibre_profile_storage.dart';
+import 'weblibre_runtime_bridge.dart';
 import 'weblibre_runtime_state.dart';
 
-/// Gecko 进程绑定契约（真实实现在 Android/Flutter 侧；形状由 ADR-007 冻结）。
+/// Gecko 进程绑定契约（真实实现在 Android/Flutter 侧；形状由 ADR-007 冻结，
+/// bind 返回值语义由 PR-B.2 修订为 restart 事务模型）。
 ///
 /// 上游硬约束（vendor/weblibre b4721ae6，core/filesystem.dart）：
 /// Gecko runtime 与进程**一次性绑定**，绑定后不能重定向——第二次激活
@@ -22,11 +24,15 @@ import 'weblibre_runtime_state.dart';
 /// 边界（ADR-007）：Binder 只做 Gecko 操作，禁止依赖 SQLite /
 /// Repository / NetworkRoute / DeviceProfile。
 abstract interface class WebLibreGeckoBinder {
-  /// 把本进程绑定到浏览器 Profile。失败必须抛错（不得静默半绑定）。
+  /// 请求绑定到浏览器 Profile。
+  ///
+  /// 返回执行结果：`bound`（本进程已绑定目标）或 `restart_required`
+  /// （当前进程绑定其他 Profile，已 arm 进程重启切换——上游无运行时
+  /// rebind）。抛错 = 保证未发起绑定。
   ///
   /// [sessionId]/[generation] 是本次启动的会话身份：Android 侧回调
   /// 必须原样携带，供 `isCurrentSession` 校验（防旧回调污染新会话）。
-  Future<void> bind(
+  Future<WebLibreBindOutcome> bind(
     String browserProfileId,
     String profileDir, {
     required String sessionId,
@@ -202,12 +208,26 @@ final class WebLibreRuntimeManager {
         _bound = handle;
 
         try {
-          await binder.bind(
+          final outcome = await binder.bind(
             browserProfileId,
             WebLibreProfilePaths.profileDir(_filesDir, browserProfileId),
             sessionId: session.id,
             generation: session.generation,
           );
+          if (outcome.restartRequired) {
+            // 切换事务（PR-B.2）：上游无运行时 rebind，已 arm 进程重启。
+            // 会话停在 restart_pending（声称存活），是否落地由下一进程的
+            // Rehydration + 健康检查裁决——本进程不谎称 running。
+            // 持久化状态用蛇形常量（枚举名是驼峰，会话状态约定蛇形）。
+            handle = WebLibreRuntimeController.transition(
+                handle, WebLibreRuntimeState.restartPending);
+            _bound = handle;
+            await _sessions?.save(session.copyWith(
+              state: kRuntimeSessionStateRestartPending,
+              updatedAt: _clock(),
+            ));
+            return handle;
+          }
           handle = WebLibreRuntimeController.transition(
               handle, WebLibreRuntimeState.running);
           _bound = handle;
@@ -234,6 +254,10 @@ final class WebLibreRuntimeManager {
         final current = _bound;
         if (current == null) {
           throw const WebLibreRuntimeBindingError('进程当前没有已绑定的浏览器 Profile');
+        }
+        if (current.state == WebLibreRuntimeState.restartPending) {
+          throw const WebLibreRuntimeBindingError(
+              '切换事务进行中（已 arm 进程重启），进程即将退出，不能 stop');
         }
 
         var handle = WebLibreRuntimeController.transition(

@@ -15,7 +15,9 @@
 | M3.4.2 Runtime Hardening | ✅（PR #9/#10） | fail-closed 解绑 / 操作互斥 / generation / 会话持久化 v3 / 删除残留防护（ADR-006） |
 | M3.4.2.5 Integration Readiness | ✅ | 状态所有权三层 / generation 原子分配 / 恢复语义三分 / Binder health 契约（ADR-007） |
 | M3.4.2.6 Rehydration 补丁 | ✅ | Dart 重启 unknown 重建槽位 + health 可信判定 fail-closed + freshness（ADR-007 补遗） |
-| M3.4-B.1 Real Binder 契约 | 🔨 本轮 | 通道协议冻结 + RealWebLibreGeckoBinder（Dart 侧）+ vendor 对接点调研（m3-runtime-bridge.md） |
+| M3.4-B.1 Real Binder 契约 | ✅（PR #13） | 通道契约 + RealWebLibreGeckoBinder + 对接点调研（m3-runtime-bridge.md） |
+| M3.4-B.2-a 切换事务模型 | 🔨 本轮 | bind 返回 bound/restart_required；restartPending 终态 + 会话 restart_pending；上游 Pigeon 通道（GeckoProfileApi）复用确认 |
+| M3.4-B.2-b Kotlin bridge + 补丁 + patched CI | ⏳ | health 探测（含 Gecko 真实探测补强）+ 001/002 补丁 + android-bridge 工作流 |
 | M3.4 Real Runtime Integration | 🔨 进行中 | Binder/补丁/真机验收；runbook 见 tools/device/README.md |
 
 ## Next（按里程碑命名追踪，不绑定仓库 PR 号）

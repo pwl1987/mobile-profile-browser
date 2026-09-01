@@ -38,13 +38,18 @@ final class BrowserRuntimeSession {
 }
 
 /// 声称存活的会话状态集合：进程重启后这些都不可信，必须先降级 unknown
-/// 再收敛（禁止直接判 stopped）。
+/// 再收敛（禁止直接判 stopped）。restart_pending 是切换事务意图
+/// （PR-B.2）：arm 重启后进程死亡，是否落地由下一进程健康检查裁决。
 const Set<String> kClaimedAliveSessionStates = <String>{
   'starting',
   'running',
   'stopping',
   'unknown',
+  'restart_pending',
 };
+
+/// 切换事务意图状态的持久化名（枚举名为驼峰，会话状态约定蛇形）。
+const String kRuntimeSessionStateRestartPending = 'restart_pending';
 
 /// Runtime 会话持久化契约。
 abstract interface class BrowserRuntimeSessionRepository {
