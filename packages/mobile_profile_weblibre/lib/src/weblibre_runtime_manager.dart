@@ -340,10 +340,8 @@ final class WebLibreRuntimeManager {
         final candidate = ordered.first;
 
         for (final session in ordered.skip(1)) {
-          await _sessions?.save(session.copyWith(
-            state: WebLibreRuntimeState.unknown.name,
-            updatedAt: _clock(),
-          ));
+          // 单槽位不变量下较旧会话必死：直接收敛 stopped（P2：无需
+          // 经过 unknown 中间写）。
           await _sessions?.save(session.copyWith(
             state: WebLibreRuntimeState.stopped.name,
             updatedAt: _clock(),
