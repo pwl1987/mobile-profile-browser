@@ -2,16 +2,13 @@ diff --git a/apps/weblibre/lib/features/settings/presentation/screens/advanced_s
 index 9d4fd5a4..46354d31 100644
 --- a/apps/weblibre/lib/features/settings/presentation/screens/advanced_settings.dart
 +++ b/apps/weblibre/lib/features/settings/presentation/screens/advanced_settings.dart
-@@ -39,6 +39,7 @@ import 'package:weblibre/features/user/domain/providers.dart';
- import 'package:weblibre/features/user/domain/repositories/cache.dart';
+@@ -40,4 +40,5 @@ import 'package:weblibre/features/user/domain/repositories/cache.dart';
  import 'package:weblibre/features/user/domain/repositories/engine_settings.dart';
  import 'package:weblibre/features/user/domain/repositories/general_settings.dart';
 +import 'package:weblibre/integration/profile_runtime_check_page.dart';
  import 'package:weblibre/utils/exit_app.dart';
  import 'package:weblibre/utils/ui_helper.dart';
- 
-@@ -118,6 +119,12 @@ const List<SettingsSectionDefinition> advancedSettingsSections = [
-         keywords: ['refresh ui'],
+@@ -119,4 +120,10 @@ const List<SettingsSectionDefinition> advancedSettingsSections = [
          child: _ResetUITile(),
        ),
 +      SettingsEntryDefinition(
@@ -22,9 +19,7 @@ index 9d4fd5a4..46354d31 100644
 +      ),
      ],
    ),
- ];
-@@ -513,3 +520,30 @@ class _ResetUITile extends ConsumerWidget {
-     );
+@@ -514,2 +521,29 @@ class _ResetUITile extends ConsumerWidget {
    }
  }
 +
@@ -56,10 +51,10 @@ index 9d4fd5a4..46354d31 100644
 +}
 diff --git a/apps/weblibre/lib/integration/profile_runtime_check_page.dart b/apps/weblibre/lib/integration/profile_runtime_check_page.dart
 new file mode 100644
-index 00000000..8a05d416
+index 00000000..6b944039
 --- /dev/null
 +++ b/apps/weblibre/lib/integration/profile_runtime_check_page.dart
-@@ -0,0 +1,597 @@
+@@ -0,0 +1,605 @@
 +import 'dart:async';
 +
 +import 'package:flutter/material.dart';
@@ -173,16 +168,20 @@ index 00000000..8a05d416
 +    if (existing != null) return existing;
 +    final filesDir = (await getApplicationSupportDirectory()).path;
 +    final store = await ProfileStore.open('$filesDir/mobile_profile_b3.db');
++    // 单一通道实例：manager 的 binder 契约实现（RealWebLibreGeckoBinder）
++    // 与检查页直读的诊断通道（selfCheck/readLogTail/clearLog）复用同一
++    // MethodChannel，保证"编排层看到的"与"诊断通道看到的"是同一事实源。
++    final bridge = MethodChannelRuntimeBridge();
 +    final driver = _B3Driver(
 +      filesDir: filesDir,
 +      store: store,
 +      manager: WebLibreRuntimeManager(
 +        storage: DirectoryWebLibreProfileStorage(filesDir),
-+        binder: MethodChannelRuntimeBridge(),
++        binder: RealWebLibreGeckoBinder(channel: bridge),
 +        filesDir: filesDir,
 +        sessionStore: store.runtimeSessions,
 +      ),
-+      bridge: MethodChannelRuntimeBridge(),
++      bridge: bridge,
 +    );
 +    setState(() => _driver = driver);
 +    return driver;
@@ -219,9 +218,6 @@ index 00000000..8a05d416
 +  }
 +
 +  MobileProfile? _slotProfile(String name) => _slots[name]?.profile;
-+
-+  String _slotBrowserId(String name) =>
-+      _slots[name]?.browserProfileId ?? '';
 +
 +  void _createSlot(String name) {
 +    final existing = _slots[name];
@@ -435,13 +431,16 @@ index 00000000..8a05d416
 +      margin: const EdgeInsets.symmetric(vertical: 6),
 +      child: Padding(
 +        padding: const EdgeInsets.all(12),
-+        children: [
-+          Text(title,
-+              style: const TextStyle(
-+                  fontSize: 15, fontWeight: FontWeight.w700)),
-+          const SizedBox(height: 8),
-+          body,
-+        ],
++        child: Column(
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            Text(title,
++                style: const TextStyle(
++                    fontSize: 15, fontWeight: FontWeight.w700)),
++            const SizedBox(height: 8),
++            body,
++          ],
++        ),
 +      ),
 +    );
 +  }
@@ -552,9 +551,13 @@ index 00000000..8a05d416
 +                  )),
 +                  _sectionCard('Profile 操作（B3-01～B3-07 / B3-15～B3-16）', Column(
 +                    children: [
-+                      _operationButton('创建 B3-A', () => _createSlot('B3-A')),
++                      _operationButton('创建 B3-A', () {
++                        _createSlot('B3-A');
++                      }),
 +                      const SizedBox(height: 6),
-+                      _operationButton('创建 B3-B', () => _createSlot('B3-B')),
++                      _operationButton('创建 B3-B', () {
++                        _createSlot('B3-B');
++                      }),
 +                      const SizedBox(height: 6),
 +                      _operationButton('启动 B3-A', () => _launchSlot('B3-A')),
 +                      const SizedBox(height: 6),
@@ -612,11 +615,9 @@ index 00000000..8a05d416
 +                          ),
 +                        ),
 +                      const SizedBox(height: 6),
-+                      Text(
-+                        '导出（debug 包）：adb shell run-as eu.weblibre.gecko '
-+                        'cat files/b3-bridge.log > b3-bridge-file.log，'
-+                        '归档后回填 runbook。',
-+                        style: const TextStyle(fontSize: 12),
++                      const Text(
++                        '导出（debug 包）：adb shell run-as eu.weblibre.gecko cat files/b3-bridge.log > b3-bridge-file.log，归档后回填 runbook。',
++                        style: TextStyle(fontSize: 12),
 +                      ),
 +                    ],
 +                  )),
@@ -642,18 +643,20 @@ index 00000000..8a05d416
 +                            )),
 +                ],
 +              ),
-+            ),
-+      ),
++          ),
 +    );
 +  }
 +}
 +
 +/// 从开发者工具入口打开检查页（全屏对话框，不新增路由，避免上游路由代码生成）。
 +void showProfileRuntimeCheckPage(BuildContext context) {
-+  showDialog<void>(
-+    context: context,
-+    useRootBarrier: false,
-+    builder: (BuildContext dialogContext) =>
-+        const Dialog.fullscreen(child: ProfileRuntimeCheckPage()),
++  // 对话框 Future 不等待：检查页生命周期与页面 State 一致，
++  // 入口只负责弹出，不需要感知关闭时机。
++  unawaited(
++    showDialog<void>(
++      context: context,
++      builder: (BuildContext dialogContext) =>
++          const Dialog.fullscreen(child: ProfileRuntimeCheckPage()),
++    ),
 +  );
 +}

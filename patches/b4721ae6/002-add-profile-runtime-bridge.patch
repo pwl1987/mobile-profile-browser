@@ -1,9 +1,27 @@
+diff --git a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt
+index bc3773fd..6143652a 100644
+--- a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt
++++ b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt
+@@ -28,4 +28,5 @@ import eu.weblibre.flutter_mozilla_components.startup.LaunchTrust
+ import eu.weblibre.flutter_mozilla_components.startup.StartupIntentBroker
+ import eu.weblibre.flutter_mozilla_components.startup.StartupPaths
++import eu.weblibre.gecko.runtime.RuntimeBridgePlugin
+ import eu.weblibre.simple_intent_receiver.IntentApprovals
+ import eu.weblibre.simple_intent_receiver.IntentCallerResolver
+@@ -203,4 +204,7 @@ class MainActivity : FlutterFragmentActivity() {
+         trimMemoryChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TRIM_MEMORY_CHANNEL)
+ 
++        RuntimeBridgePlugin.register(this, flutterEngine)
++
++
+         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ACTIVITY_CHANNEL).setMethodCallHandler { call, result ->
+             when (call.method) {
 diff --git a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt
 new file mode 100644
-index 00000000..6130dd5c
+index 00000000..7d7d9268
 --- /dev/null
 +++ b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt
-@@ -0,0 +1,374 @@
+@@ -0,0 +1,399 @@
 +package eu.weblibre.gecko.runtime
 +
 +import android.content.Context
@@ -15,6 +33,7 @@ index 00000000..6130dd5c
 +import eu.weblibre.flutter_mozilla_components.GeckoRuntimeState
 +import eu.weblibre.flutter_mozilla_components.api.GeckoProfileApiImpl
 +import eu.weblibre.flutter_mozilla_components.startup.StartupArbiter
++import eu.weblibre.flutter_mozilla_components.startup.StartupState
 +import io.flutter.embedding.engine.FlutterEngine
 +import io.flutter.plugin.common.MethodCall
 +import io.flutter.plugin.common.MethodChannel
@@ -286,6 +305,7 @@ index 00000000..6130dd5c
 +        val committed = StartupArbiter.committedProfileId()
 +        val boundFolder = StartupArbiter.boundProfileFolder()
 +        val arbiterState = StartupArbiter.currentState()
++        val arbiterStateText = startupStateDescription(arbiterState)
 +        val file = logFileRef
 +        val logSizeBytes = file?.let { if (it.exists()) it.length() else 0L } ?: 0L
 +        val payload = mapOf(
@@ -293,7 +313,7 @@ index 00000000..6130dd5c
 +            "engineProviderProfileId" to geckoProfileId,
 +            "arbiterCommitted" to committed,
 +            "arbiterBoundFolder" to boundFolder,
-+            "arbiterState" to arbiterState,
++            "arbiterState" to arbiterStateText,
 +            "identitySessionId" to identitySessionId,
 +            "identityGeneration" to identityGeneration,
 +            "logFile" to file?.absolutePath,
@@ -303,7 +323,7 @@ index 00000000..6130dd5c
 +        )
 +        log(
 +            "selfCheck gecko=$geckoStateName geckoProfile=$geckoProfileId " +
-+                "committed=$committed boundFolder=$boundFolder arbiter=$arbiterState " +
++                "committed=$committed boundFolder=$boundFolder arbiter=$arbiterStateText " +
 +                "session=$identitySessionId gen=$identityGeneration logSize=$logSizeBytes " +
 +                "pid=${Process.myPid()}",
 +        )
@@ -358,6 +378,29 @@ index 00000000..6130dd5c
 +        is GeckoRuntimeState.NeverCreated -> "never_created"
 +        is GeckoRuntimeState.Live -> "live"
 +        is GeckoRuntimeState.Shutdown -> "shutdown"
++    }
++
++    /**
++     * 把上游 `StartupState`（sealed interface）投影为 MethodChannel 可编码的
++     * 稳定诊断字符串。只读取事实字段，不触发任何仲裁副作用。
++     */
++    private fun startupStateDescription(state: StartupState): String = when (state) {
++        is StartupState.Uninitialized -> "uninitialized"
++        is StartupState.Unresolved ->
++            "unresolved(candidate=${state.candidateProfileId})"
++        is StartupState.Selecting ->
++            "selecting(lease=${state.leaseId}, candidate=${state.candidateProfileId})"
++        is StartupState.Committing -> "committing(profile=${state.profileId})"
++        is StartupState.Committed ->
++            "committed(profile=${state.profileId}, path=${state.relativePath})"
++        is StartupState.MaintenanceReserved ->
++            "maintenance_reserved(task=${state.taskId}, recovery=${state.recoveryRequired})"
++        is StartupState.Maintenance ->
++            "maintenance(task=${state.taskId}, recovery=${state.recoveryRequired})"
++        is StartupState.RestartPreparing ->
++            "restart_preparing(target=${state.targetProfileId}, reason=${state.reason})"
++        is StartupState.Restarting ->
++            "restarting(target=${state.targetProfileId}, reason=${state.reason})"
 +    }
 +
 +    private fun adoptIdentity(sessionId: String, generation: Int) {
@@ -488,24 +531,3 @@ index 00000000..207d5b92
 +    throw WebLibreRuntimeBridgeError('$method 返回了非对象负载: $raw');
 +  }
 +}
-diff --git a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt
---- a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt
-+++ b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt
-@@ -28,6 +28,7 @@
- import eu.weblibre.flutter_mozilla_components.startup.LaunchTrust
- import eu.weblibre.flutter_mozilla_components.startup.StartupIntentBroker
- import eu.weblibre.flutter_mozilla_components.startup.StartupPaths
-+import eu.weblibre.gecko.runtime.RuntimeBridgePlugin
- import eu.weblibre.simple_intent_receiver.IntentApprovals
- import eu.weblibre.simple_intent_receiver.IntentCallerResolver
- import io.flutter.embedding.android.FlutterFragmentActivity
-@@ -201,6 +202,9 @@ class MainActivity : FlutterFragmentActivity() {
-     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-         super.configureFlutterEngine(flutterEngine)
- 
-         trimMemoryChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TRIM_MEMORY_CHANNEL)
-+
-+        RuntimeBridgePlugin.register(this, flutterEngine)
-+
- 
-         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ACTIVITY_CHANNEL).setMethodCallHandler { call, result ->
