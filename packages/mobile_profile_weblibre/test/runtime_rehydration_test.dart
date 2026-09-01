@@ -14,12 +14,14 @@ final class HealthStubBinder implements WebLibreGeckoBinder {
   WebLibreRuntimeHealth? healthResult;
 
   @override
-  Future<void> bind(
+  Future<WebLibreBindOutcome> bind(
     String browserProfileId,
     String profileDir, {
     required String sessionId,
     required int generation,
-  }) async {}
+  }) async =>
+      WebLibreBindOutcome(
+          restartRequired: false, targetProfile: browserProfileId);
 
   @override
   Future<void> unbind(

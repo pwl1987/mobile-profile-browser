@@ -32,12 +32,14 @@ final class FailingDeleteStorage implements WebLibreProfileStorage {
 
 final class OkBinder implements WebLibreGeckoBinder {
   @override
-  Future<void> bind(
+  Future<WebLibreBindOutcome> bind(
     String browserProfileId,
     String profileDir, {
     required String sessionId,
     required int generation,
-  }) async {}
+  }) async =>
+      WebLibreBindOutcome(
+          restartRequired: false, targetProfile: browserProfileId);
 
   @override
   Future<void> unbind(
@@ -180,12 +182,14 @@ void main() {
 
 final class _UnbindFailsBinder implements WebLibreGeckoBinder {
   @override
-  Future<void> bind(
+  Future<WebLibreBindOutcome> bind(
     String browserProfileId,
     String profileDir, {
     required String sessionId,
     required int generation,
-  }) async {}
+  }) async =>
+      WebLibreBindOutcome(
+          restartRequired: false, targetProfile: browserProfileId);
 
   @override
   Future<void> unbind(

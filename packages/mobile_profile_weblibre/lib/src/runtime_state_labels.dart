@@ -13,6 +13,7 @@ const Map<WebLibreRuntimeState, String> kWebLibreRuntimeStateZhLabels =
   WebLibreRuntimeState.stopped: '已停止',
   WebLibreRuntimeState.failed: '启动失败',
   WebLibreRuntimeState.unknown: '状态未知',
+  WebLibreRuntimeState.restartPending: '正在切换浏览环境',
 };
 
 String webLibreRuntimeStateZhLabel(WebLibreRuntimeState state) {

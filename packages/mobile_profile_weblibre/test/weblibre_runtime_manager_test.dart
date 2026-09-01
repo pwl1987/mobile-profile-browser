@@ -13,7 +13,7 @@ final class RecordingGeckoBinder implements WebLibreGeckoBinder {
   Object? bindFailure;
 
   @override
-  Future<void> bind(
+  Future<WebLibreBindOutcome> bind(
     String browserProfileId,
     String profileDir, {
     required String sessionId,
@@ -23,6 +23,8 @@ final class RecordingGeckoBinder implements WebLibreGeckoBinder {
       throw bindFailure!;
     }
     bindLog.add('$browserProfileId|$profileDir|$sessionId|$generation');
+    return WebLibreBindOutcome(
+        restartRequired: false, targetProfile: browserProfileId);
   }
 
   @override

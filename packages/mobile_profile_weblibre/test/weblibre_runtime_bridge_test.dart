@@ -10,6 +10,7 @@ final class FakeBridgeChannel implements WebLibreRuntimeBridgeChannel {
   final List<String> unbindLog = <String>[];
   Object? bindFailure;
   Object? unbindFailure;
+  Map<String, Object?>? bindResponseOverride;
   Map<String, Object?> healthResponse = <String, Object?>{
     'alive': false,
     'browserProfileId': uuidA,
@@ -25,7 +26,11 @@ final class FakeBridgeChannel implements WebLibreRuntimeBridgeChannel {
   }) async {
     if (bindFailure != null) throw bindFailure!;
     bindLog.add('$browserProfileId|$sessionId|$generation');
-    return <String, Object?>{};
+    return bindResponseOverride ??
+        <String, Object?>{
+          'result': 'bound',
+          'targetProfile': browserProfileId,
+        };
   }
 
   @override
@@ -64,7 +69,7 @@ void main() {
     final channel = FakeBridgeChannel();
     final binder = RealWebLibreGeckoBinder(channel: channel);
 
-    await binder.bind(
+    final outcome = await binder.bind(
       uuidA,
       '/files/weblibre_profiles/profile-$uuidA',
       sessionId: 'rs-1',
@@ -74,6 +79,41 @@ void main() {
 
     expect(channel.bindLog.single, '$uuidA|rs-1|3');
     expect(channel.unbindLog.single, '$uuidA|rs-1|3');
+    expect(outcome.restartRequired, isFalse);
+    expect(outcome.targetProfile, uuidA);
+  });
+
+  test('bind 返回 restart_required 时映射为切换结果', () async {
+    final channel = FakeBridgeChannel();
+    channel.bindResponseOverride = <String, Object?>{
+      'result': 'restart_required',
+      'targetProfile': uuidA,
+      'currentProfile': 'another-profile',
+      'pid': 4242,
+    };
+    final binder = RealWebLibreGeckoBinder(channel: channel);
+
+    final outcome = await binder.bind(
+      uuidA, '/dir', sessionId: 'rs-1', generation: 1,
+    );
+
+    expect(outcome.restartRequired, isTrue);
+    expect(outcome.currentProfile, 'another-profile');
+    expect(outcome.pid, 4242);
+  });
+
+  test('bind 返回未知 result 时抛协议错误', () async {
+    final channel = FakeBridgeChannel();
+    channel.bindResponseOverride = <String, Object?>{
+      'result': 'magic',
+      'targetProfile': uuidA,
+    };
+    final binder = RealWebLibreGeckoBinder(channel: channel);
+
+    await expectLater(
+      binder.bind(uuidA, '/dir', sessionId: 'rs-1', generation: 1),
+      throwsA(isA<WebLibreRuntimeBridgeError>()),
+    );
   });
 
   test('health 响应映射 RuntimeHealth（含 pid 与可空字段）', () async {

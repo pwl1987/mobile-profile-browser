@@ -1,5 +1,5 @@
-/// WebLibre Runtime 的生命周期状态（M3.3 Task 3 定义；unknown 为
-/// ADR-004 进程死亡恢复状态）。
+/// WebLibre Runtime 的生命周期状态（M3.3 定义；unknown 为 ADR-004 进程
+/// 死亡恢复状态；restartPending 为 PR-B.2 切换事务状态）。
 enum WebLibreRuntimeState {
   created,
   starting,
@@ -8,6 +8,7 @@ enum WebLibreRuntimeState {
   stopped,
   failed,
   unknown,
+  restartPending,
 }
 
 final class WebLibreRuntimeStateError implements Exception {
@@ -52,13 +53,14 @@ final class WebLibreRuntimeHandle {
 /// 状态机约束：
 /// ```text
 /// created → starting
-/// starting → running | failed
-/// running → stopping | failed
-/// stopping → stopped | failed
+/// starting → running | failed | restartPending
+/// running → stopping | failed | unknown
+/// stopping → stopped | failed | unknown
 /// stopped → starting（重新启动）
 /// failed → starting（重试）
 /// starting/running/stopping → unknown（进程死亡，知识失效——ADR-004）
 /// unknown → running（健康检查证实）| stopped（确认死亡）| failed
+/// restartPending → 本进程内终态（进程即将重启，交由下一进程恢复收敛）
 /// ```
 final class WebLibreRuntimeController {
   WebLibreRuntimeController._();
@@ -70,7 +72,8 @@ final class WebLibreRuntimeController {
       case WebLibreRuntimeState.starting:
         return to == WebLibreRuntimeState.running ||
             to == WebLibreRuntimeState.failed ||
-            to == WebLibreRuntimeState.unknown;
+            to == WebLibreRuntimeState.unknown ||
+            to == WebLibreRuntimeState.restartPending;
       case WebLibreRuntimeState.running:
         return to == WebLibreRuntimeState.stopping ||
             to == WebLibreRuntimeState.failed ||
@@ -86,6 +89,10 @@ final class WebLibreRuntimeController {
         return to == WebLibreRuntimeState.running ||
             to == WebLibreRuntimeState.stopped ||
             to == WebLibreRuntimeState.failed;
+      case WebLibreRuntimeState.restartPending:
+        // 本进程即将重启；重启是否落地由下一进程的恢复/健康检查裁决，
+        // 本进程内不允许任何转出（避免"数据库认为 B 已运行"的漂移）。
+        return false;
     }
   }
 
