@@ -69,20 +69,23 @@ stop(A) → launch(B)
 旧会话收敛为 stopped 的前提限定于当前单 Runtime（runtime_owner=应用
 进程）架构假设；Gecko 进程独立化后此规则必须重新评估。
 
-### health 的 bindingPresent 与 runtimeAlive（B.2-b 硬 Gate：命名区分）
+### health 的 bindingPresent 与 runtimeAlive（B.3 落地：真实 Gecko 探测）
 
-协议字段（Kotlin `RuntimeBridgePlugin` 已按此实现）：
+**B.3 起为真实现**（002 补丁已升级，待真机验证）：
 
 ```text
-bindingPresent : bool   —— StartupArbiter 提交 + 绑定目录存在（系统认为已绑定）
-probeKind      : string —— 当前 "binding_presence"；B.3 升级 Gecko 真实探测后为 "gecko_runtime"
-runtimeAlive   : （真实探测就绪前不返回该字段，绝不以 bindingPresent 冒充）
-alive          : 过渡期 = bindingPresent，且 probeKind 明示其来源
+bindingPresent : StartupArbiter 提交 + 绑定目录（"系统认为已绑定"，独立诊断字段）
+runtimeAlive   : EngineProvider.runtimeState() —— Live/NeverCreated/Shutdown
+                 （与 Arbiter 独立的第二事实源；Live.profileId 交叉核验目标）
+probeKind      : "gecko_runtime"
+geckoState     : live | never_created | shutdown（证据字段）
+alive          : bindingPresent && runtimeAlive —— 缺一不可
 ```
 
-**在 probeKind 变为 gecko_runtime 之前，alive 不代表 Gecko runtime 存活。**
-`COMMITTED ∧ Gecko 已死` 的窗口内会误报——B.3 真机验收前必须替换为真实
-探测，这是 Gate 条件。
+B3-12 判别器：`Arbiter COMMITTED ∧ Gecko 已 shutdown/未创建` 时，
+runtimeAlive=false ⇒ alive=false——binding_presence 不得单独放行。
+B.2-b 期间的 binding_presence 过渡模式已被替换；真机验证见
+tools/device/README.md 的 B3-12。
 
 ### 会话身份重建链（B.3 真机验收前置，B.2-b 已落 Kotlin）
 

@@ -2,13 +2,16 @@ diff --git a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime
 new file mode 100644
 --- /dev/null
 +++ b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,261 @@
 +package eu.weblibre.gecko.runtime
 +
 +import android.content.Context
 +import android.os.Handler
 +import android.os.Looper
 +import android.os.Process
++import android.util.Log
++import eu.weblibre.flutter_mozilla_components.EngineProvider
++import eu.weblibre.flutter_mozilla_components.GeckoRuntimeState
 +import eu.weblibre.flutter_mozilla_components.api.GeckoProfileApiImpl
 +import eu.weblibre.flutter_mozilla_components.startup.StartupArbiter
 +import io.flutter.embedding.engine.FlutterEngine
@@ -25,11 +28,11 @@ new file mode 100644
 + * Binder 只是 Android/WebLibre 的执行适配层（ADR-007 边界）：
 + * - bind/unbind 薄转发上游 GeckoProfileApi（armProfileRestart /
 + *   completeProfileRestart），不重新实现生命周期控制；
-+ * - health 为**过渡实现**：probeKind = "binding_presence"（StartupArbiter
-+ *   提交 + 绑定目录存在），**不是 Gecko runtime 心跳**；B.3 真机阶段必须
-+ *   升级为真实 Gecko 探测（probeKind = "gecko_runtime"）后，alive 才能
-+ *   代表运行时存活。bindingPresent 与 runtimeAlive 在协议中显式区分，
-+ *   不允许伪装。
++ * - health 为真实 Gecko 探测（B.3 Gate）：probeKind = "gecko_runtime"，
++ *   runtimeAlive 来自 EngineProvider.runtimeState()（Live/NeverCreated/
++ *   Shutdown，与 StartupArbiter 独立的第二事实源，Live.profileId 交叉
++ *   核验目标）；alive = bindingPresent && runtimeAlive，缺一不可。
++ *   bindingPresent 仍作为独立诊断字段返回（Arbiter 提交 + 绑定目录）。
 + * - 禁止运行时 rebind：目标与当前提交不同时，唯一出路是
 + *   armProfileRestart（persistNextStartProfile + trampoline + alarm），
 + *   返回 restart_required 由上层编排进程重启。
@@ -43,8 +46,18 @@ new file mode 100644
 + */
 +object RuntimeBridgePlugin {
 +    private const val CHANNEL = "weblibre/runtime_bridge"
-+    private const val PROBE_KIND = "binding_presence"
++    private const val TAG = "MobileProfileBridge"
 +
++    /**
++     * health 探测（B.3 Gate）：
++     * - bindingPresent：StartupArbiter 提交 + 绑定目录（"系统认为已绑定"）；
++     * - runtimeAlive：EngineProvider.runtimeState() 的真实 Gecko 状态
++     *   （Live/NeverCreated/Shutdown）——B3-12 的判别器：Arbiter COMMITTED
++     *   而 Gecko 已 Shutdown/NeverCreated 时，alive 必须为 false；
++     * - probeKind 恒为 gecko_runtime（真机前如需回退诊断模式，
++     *   bindingPresent 字段仍独立可读）；
++     * - alive = bindingPresent && runtimeAlive（缺一不可）。
++     */
 +    @Volatile private var identitySessionId: String? = null
 +    @Volatile private var identityGeneration: Int? = null
 +
@@ -52,6 +65,7 @@ new file mode 100644
 +
 +    fun register(context: Context, flutterEngine: FlutterEngine) {
 +        val appContext = context.applicationContext
++        Log.i(TAG, "register pid=${Process.myPid()}")
 +        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
 +            .setMethodCallHandler { call, result ->
 +                try {
@@ -80,6 +94,11 @@ new file mode 100644
 +        val committed = StartupArbiter.committedProfileId()
 +        if (committed != null && committed.equals(target, ignoreCase = true)) {
 +            adoptIdentity(sessionId, generation)
++            Log.i(
++                TAG,
++                "bind bound target=$target session=$sessionId gen=$generation " +
++                    "pid=${Process.myPid()} at=${isoNow()}",
++            )
 +            result.success(
 +                mapOf(
 +                    "result" to "bound",
@@ -94,6 +113,11 @@ new file mode 100644
 +        val armed = GeckoProfileApiImpl(appContext)
 +            .armProfileRestart(target, "mobile_profile_switch")
 +        if (armed) {
++            Log.i(
++                TAG,
++                "bind restart_required target=$target current=$committed " +
++                    "session=$sessionId gen=$generation pid=${Process.myPid()} at=${isoNow()}",
++            )
 +            result.success(
 +                mapOf(
 +                    "result" to "restart_required",
@@ -104,6 +128,10 @@ new file mode 100644
 +                )
 +            )
 +        } else {
++            Log.w(
++                TAG,
++                "bind arm_failed target=$target state=${StartupArbiter.currentState()}",
++            )
 +            result.error(
 +                "arm_failed",
 +                "RestartCoordinator refused the restart (state=${StartupArbiter.currentState()})",
@@ -132,8 +160,14 @@ new file mode 100644
 +        // 再 exitProcess(0)。result.success() 在主线程同步写出应答字节；
 +        // terminate 投递到主线程队列末尾，保证应答先于进程退出送达。
 +        // 该顺序是 B.3 真机集成测试的必测点（Dart await 不得悬挂）。
++        Log.i(
++            TAG,
++            "unbind exiting target=$target session=${call.argument<String>("sessionId")} " +
++                "gen=${call.argument<Int>("generation")} pid=${Process.myPid()} at=${isoNow()}",
++        )
 +        result.success(mapOf("result" to "exiting"))
 +        mainHandler.post {
++            Log.i(TAG, "unbind terminate pid=${Process.myPid()} at=${isoNow()}")
 +            GeckoProfileApiImpl(appContext).completeProfileRestart()
 +        }
 +    }
@@ -147,19 +181,42 @@ new file mode 100644
 +            committed.equals(expected, ignoreCase = true) &&
 +            boundFolder != null
 +
++        // 真实 Gecko 探测（B.3 Gate）：EngineProvider 维护的运行时状态
++        // 是与 Arbiter 独立的第二事实源；Live.profileId 交叉核验目标。
++        val gecko = EngineProvider.runtimeState()
++        val geckoStateName = when (gecko) {
++            is GeckoRuntimeState.NeverCreated -> "never_created"
++            is GeckoRuntimeState.Live -> "live"
++            is GeckoRuntimeState.Shutdown -> "shutdown"
++        }
++        val geckoProfileId = (gecko as? GeckoRuntimeState.Live)?.profileId
++        val runtimeAlive = gecko is GeckoRuntimeState.Live &&
++            gecko.profileId.equals(expected, ignoreCase = true)
++        val observedAt = isoNow()
++        val pid = Process.myPid()
++
 +        val payload = mutableMapOf<String, Any?>(
-+            // 过渡实现：alive == bindingPresent，probeKind 明示非心跳。
 +            "bindingPresent" to bindingPresent,
-+            "probeKind" to PROBE_KIND,
-+            "alive" to bindingPresent,
++            "probeKind" to "gecko_runtime",
++            "runtimeAlive" to runtimeAlive,
++            "geckoState" to geckoStateName,
++            "geckoProfileId" to geckoProfileId,
++            "alive" to (bindingPresent && runtimeAlive),
 +            "browserProfileId" to expected,
-+            "observedAt" to isoNow(),
-+            "pid" to Process.myPid(),
++            "observedAt" to observedAt,
++            "pid" to pid,
 +        )
 +        if (bindingPresent) {
 +            payload["sessionId"] = identitySessionId
 +            payload["generation"] = identityGeneration
 +        }
++        Log.i(
++            TAG,
++            "health expected=$expected committed=$committed binding=$bindingPresent " +
++                "gecko=$geckoStateName geckoProfile=$geckoProfileId alive=${payload["alive"]} " +
++                "session=$identitySessionId gen=$identityGeneration " +
++                "observedAt=$observedAt pid=$pid",
++        )
 +        result.success(payload)
 +    }
 +
@@ -171,6 +228,7 @@ new file mode 100644
 +        val committed = StartupArbiter.committedProfileId()
 +        if (committed == null || !committed.equals(target, ignoreCase = true)) {
 +            // 拒绝伪造：身份必须与 native 提交事实一致才可注入。
++            Log.w(TAG, "attachSessionIdentity rejected target=$target committed=$committed")
 +            result.success(
 +                mapOf(
 +                    "adopted" to false,
@@ -180,299 +238,11 @@ new file mode 100644
 +            return
 +        }
 +        adoptIdentity(sessionId, generation)
-+        result.success(mapOf("adopted" to true))
-+    }
-+
-+    private fun adoptIdentity(sessionId: String, generation: Int) {
-+        identitySessionId = sessionId
-+        identityGeneration = generation
-+    }
-+
-+    private fun stringArg(call: MethodCall, key: String): String =
-+        call.argument<String>(key)
-+            ?: throw IllegalArgumentException("missing argument: $key")
-+
-+    private fun intArg(call: MethodCall, key: String): Int =
-+        call.argument<Int>(key)
-+            ?: throw IllegalArgumentException("missing argument: $key")
-+
-+    private fun isoNow(): String =
-+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-+            .apply { timeZone = TimeZone.getTimeZone("UTC") }
-+            .format(Date())
-+}
-
-diff --git a/apps/weblibre/lib/integration/mobile_profile_runtime_bridge.dart b/apps/weblibre/lib/integration/mobile_profile_runtime_bridge.dart
-new file mode 100644
---- /dev/null
-+++ b/apps/weblibre/lib/integration/mobile_profile_runtime_bridge.dart
-@@ -0,0 +1,83 @@
-+import 'package:flutter/services.dart';
-+import 'package:mobile_profile_weblibre/mobile_profile_weblibre.dart';
-+
-+/// `WebLibreRuntimeBridgeChannel` 的物理 MethodChannel 实现
-+/// （patches/b4721ae6/002-add-profile-runtime-bridge.patch 载体）。
-+///
-+/// 协议对端是 Android 侧 `RuntimeBridgePlugin`（bind/unbind/health/
-+/// attachSessionIdentity）。任何协议异常（missing field / wrong type /
-+/// unknown result / channel error）都以
-+/// [PlatformException]/[WebLibreRuntimeBridgeError] 形式上抛，
-+/// 由上层 fail-closed 处理——本层不做任何兜底重试或默认值。
-+final class MethodChannelRuntimeBridge implements WebLibreRuntimeBridgeChannel {
-+  MethodChannelRuntimeBridge({MethodChannel? channel})
-+      : _channel = channel ?? const MethodChannel('weblibre/runtime_bridge');
-+
-+  final MethodChannel _channel;
-+
-+  @override
-+  Future<Map<String, Object?>> bind({
-+    required String browserProfileId,
-+    required String profileDir,
-+    required String sessionId,
-+    required int generation,
-+  }) async {
-+    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('bind', <String, Object?>{
-+      'browserProfileId': browserProfileId,
-+      'profileDir': profileDir,
-+      'sessionId': sessionId,
-+      'generation': generation,
-+    });
-+    return _asMap(raw, 'bind');
-+  }
-+
-+  @override
-+  Future<Map<String, Object?>> unbind({
-+    required String browserProfileId,
-+    required String sessionId,
-+    required int generation,
-+  }) async {
-+    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('unbind', <String, Object?>{
-+      'browserProfileId': browserProfileId,
-+      'sessionId': sessionId,
-+      'generation': generation,
-+    });
-+    return _asMap(raw, 'unbind');
-+  }
-+
-+  @override
-+  Future<Map<String, Object?>> health({required String browserProfileId}) async {
-+    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-+      'health',
-+      <String, Object?>{'browserProfileId': browserProfileId},
-+    );
-+    return _asMap(raw, 'health');
-+  }
-+
-+  /// 新进程 bootstrap 提交核验后重建会话身份（B.3 真机验收前置链路）。
-+  /// 返回 adopted=false 表示 native 提交与目标不一致，身份被拒绝。
-+  Future<bool> attachSessionIdentity({
-+    required String browserProfileId,
-+    required String sessionId,
-+    required int generation,
-+  }) async {
-+    final raw =
-+        await _channel.invokeMethod<Map<dynamic, dynamic>>(
-+      'attachSessionIdentity',
-+      <String, Object?>{
-+        'browserProfileId': browserProfileId,
-+        'sessionId': sessionId,
-+        'generation': generation,
-+      },
-+    );
-+    final map = _asMap(raw, 'attachSessionIdentity');
-+    return map['adopted'] == true;
-+  }
-+
-+  static Map<String, Object?> _asMap(Object? raw, String method) {
-+    if (raw is Map) {
-+      return Map<String, Object?>.from(raw);
-+    }
-+    throw WebLibreRuntimeBridgeError('$method 返回了非对象负载: $raw');
-+  }
-+}
-
-diff --git a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt
-new file mode 100644
---- /dev/null
-+++ b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt
-@@ -0,0 +1,198 @@
-+package eu.weblibre.gecko.runtime
-+
-+import android.content.Context
-+import android.os.Handler
-+import android.os.Looper
-+import android.os.Process
-+import eu.weblibre.flutter_mozilla_components.api.GeckoProfileApiImpl
-+import eu.weblibre.flutter_mozilla_components.startup.StartupArbiter
-+import io.flutter.embedding.engine.FlutterEngine
-+import io.flutter.plugin.common.MethodCall
-+import io.flutter.plugin.common.MethodChannel
-+import java.text.SimpleDateFormat
-+import java.util.Date
-+import java.util.Locale
-+import java.util.TimeZone
-+
-+/**
-+ * Mobile Profile Runtime Bridge（patches/b4721ae6/002-add-profile-runtime-bridge.patch）。
-+ *
-+ * Binder 只是 Android/WebLibre 的执行适配层（ADR-007 边界）：
-+ * - bind/unbind 薄转发上游 GeckoProfileApi（armProfileRestart /
-+ *   completeProfileRestart），不重新实现生命周期控制；
-+ * - health 为**过渡实现**：probeKind = "binding_presence"（StartupArbiter
-+ *   提交 + 绑定目录存在），**不是 Gecko runtime 心跳**；B.3 真机阶段必须
-+ *   升级为真实 Gecko 探测（probeKind = "gecko_runtime"）后，alive 才能
-+ *   代表运行时存活。bindingPresent 与 runtimeAlive 在协议中显式区分，
-+ *   不允许伪装。
-+ * - 禁止运行时 rebind：目标与当前提交不同时，唯一出路是
-+ *   armProfileRestart（persistNextStartProfile + trampoline + alarm），
-+ *   返回 restart_required 由上层编排进程重启。
-+ *
-+ * 会话身份（sessionId/generation）是执行层单值内存状态，不是数据库：
-+ * - bind 成功（本进程已提交目标）时记录；
-+ * - 进程重启后丢失 → health 返回空身份 → Dart 侧 fail-closed 判死；
-+ * - 新进程在 bootstrap 提交核验后必须经 attachSessionIdentity 重建身份
-+ *   （核验条件：StartupArbiter.committedProfileId == 目标），否则
-+ *   "Gecko 启动成功但 Dart 判死"。这是 B.3 真机验收的前置链路。
-+ */
-+object RuntimeBridgePlugin {
-+    private const val CHANNEL = "weblibre/runtime_bridge"
-+    private const val PROBE_KIND = "binding_presence"
-+
-+    @Volatile private var identitySessionId: String? = null
-+    @Volatile private var identityGeneration: Int? = null
-+
-+    private val mainHandler = Handler(Looper.getMainLooper())
-+
-+    fun register(context: Context, flutterEngine: FlutterEngine) {
-+        val appContext = context.applicationContext
-+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
-+            .setMethodCallHandler { call, result ->
-+                try {
-+                    when (call.method) {
-+                        "bind" -> handleBind(appContext, call, result)
-+                        "unbind" -> handleUnbind(appContext, call, result)
-+                        "health" -> handleHealth(call, result)
-+                        "attachSessionIdentity" -> handleAttachIdentity(call, result)
-+                        else -> result.notImplemented()
-+                    }
-+                } catch (t: Throwable) {
-+                    result.error("bridge_error", t.message ?: t.javaClass.simpleName, null)
-+                }
-+            }
-+    }
-+
-+    private fun handleBind(
-+        appContext: Context,
-+        call: MethodCall,
-+        result: MethodChannel.Result,
-+    ) {
-+        val target = stringArg(call, "browserProfileId").lowercase()
-+        val sessionId = stringArg(call, "sessionId")
-+        val generation = intArg(call, "generation")
-+
-+        val committed = StartupArbiter.committedProfileId()
-+        if (committed != null && committed.equals(target, ignoreCase = true)) {
-+            adoptIdentity(sessionId, generation)
-+            result.success(
-+                mapOf(
-+                    "result" to "bound",
-+                    "targetProfile" to target,
-+                    "pid" to Process.myPid(),
-+                )
-+            )
-+            return
-+        }
-+
-+        // 上游无运行时 rebind：目标 ≠ 当前提交，唯一出路是重启切换。
-+        val armed = GeckoProfileApiImpl(appContext)
-+            .armProfileRestart(target, "mobile_profile_switch")
-+        if (armed) {
-+            result.success(
-+                mapOf(
-+                    "result" to "restart_required",
-+                    "currentProfile" to committed,
-+                    "targetProfile" to target,
-+                    "sessionId" to sessionId,
-+                    "generation" to generation,
-+                )
-+            )
-+        } else {
-+            result.error(
-+                "arm_failed",
-+                "RestartCoordinator refused the restart (state=${StartupArbiter.currentState()})",
-+                null,
-+            )
-+        }
-+    }
-+
-+    private fun handleUnbind(
-+        appContext: Context,
-+        call: MethodCall,
-+        result: MethodChannel.Result,
-+    ) {
-+        val target = stringArg(call, "browserProfileId").lowercase()
-+        val committed = StartupArbiter.committedProfileId()
-+        if (committed == null || !committed.equals(target, ignoreCase = true)) {
-+            result.error(
-+                "not_bound",
-+                "process is not committed to $target (committed=$committed)",
-+                null,
-+            )
-+            return
-+        }
-+
-+        // P0 顺序约束（B.2-b 硬 Gate）：必须先完成 {result: exiting} 应答，
-+        // 再 exitProcess(0)。result.success() 在主线程同步写出应答字节；
-+        // terminate 投递到主线程队列末尾，保证应答先于进程退出送达。
-+        // 该顺序是 B.3 真机集成测试的必测点（Dart await 不得悬挂）。
-+        result.success(mapOf("result" to "exiting"))
-+        mainHandler.post {
-+            GeckoProfileApiImpl(appContext).completeProfileRestart()
-+        }
-+    }
-+
-+    private fun handleHealth(call: MethodCall, result: MethodChannel.Result) {
-+        val expected = stringArg(call, "browserProfileId").lowercase()
-+        val committed = StartupArbiter.committedProfileId()
-+        val boundFolder = StartupArbiter.boundProfileFolder()
-+
-+        val bindingPresent = committed != null &&
-+            committed.equals(expected, ignoreCase = true) &&
-+            boundFolder != null
-+
-+        val payload = mutableMapOf<String, Any?>(
-+            // 过渡实现：alive == bindingPresent，probeKind 明示非心跳。
-+            "bindingPresent" to bindingPresent,
-+            "probeKind" to PROBE_KIND,
-+            "alive" to bindingPresent,
-+            "browserProfileId" to expected,
-+            "observedAt" to isoNow(),
-+            "pid" to Process.myPid(),
++        Log.i(
++            TAG,
++            "attachSessionIdentity adopted target=$target session=$sessionId " +
++                "gen=$generation pid=${Process.myPid()} at=${isoNow()}",
 +        )
-+        if (bindingPresent) {
-+            payload["sessionId"] = identitySessionId
-+            payload["generation"] = identityGeneration
-+        }
-+        result.success(payload)
-+    }
-+
-+    private fun handleAttachIdentity(call: MethodCall, result: MethodChannel.Result) {
-+        val target = stringArg(call, "browserProfileId").lowercase()
-+        val sessionId = stringArg(call, "sessionId")
-+        val generation = intArg(call, "generation")
-+
-+        val committed = StartupArbiter.committedProfileId()
-+        if (committed == null || !committed.equals(target, ignoreCase = true)) {
-+            // 拒绝伪造：身份必须与 native 提交事实一致才可注入。
-+            result.success(
-+                mapOf(
-+                    "adopted" to false,
-+                    "reason" to "committed=$committed does not match $target",
-+                )
-+            )
-+            return
-+        }
-+        adoptIdentity(sessionId, generation)
 +        result.success(mapOf("adopted" to true))
 +    }
 +
