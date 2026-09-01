@@ -25,12 +25,17 @@ patches/
 
 ## 当前状态
 
-- `b4721ae6/`：空。M3.4 需要的前两枚补丁（命名见上）：
-  `001-add-mobile-profile-dependencies.patch`（把 mobile_profile_* 包以
-  path 依赖接入 vendor/weblibre/apps/weblibre/pubspec.yaml，即
-  apply-weblibre-patches.sh 当前在运行时做的那份注入）与
-  `002-add-profile-runtime-bridge.patch`（RealWebLibreGeckoBinder 的
-  Android 侧桥接，落在 vendor 应用内，不污染纯 Dart 包）。
+- `b4721ae6/001-add-mobile-profile-dependencies.patch`：✅ 已落地——
+  把 `mobile_profile_weblibre`（含传递依赖 browser_adapter/domain/
+  integration/storage）以 path 依赖接入 vendor 应用 pubspec。
+- `b4721ae6/002-add-profile-runtime-bridge.patch`：✅ 已落地——
+  Kotlin `RuntimeBridgePlugin`（bind/unbind/health/attachSessionIdentity，
+  薄转发上游 GeckoProfileApi + StartupArbiter）、Dart glue
+  `MethodChannelRuntimeBridge`、MainActivity 注册。
+  CI：`android-bridge.yml`（上游 + 001/002 打补丁构建；android-m1 保持
+  纯上游基线，二者不互相迁就）。
+- 补丁修改/新增文件一律先本地 `git -C vendor/weblibre apply --check`
+  验证，CI 再跑 --check + apply 双保险。
 - `dc74be45/0002-material-ui-compatibility.patch`：针对已损坏基线编写，
   存档不使用；上游修复 material_ui 1.1.0 类型冲突后重新评估。
 
