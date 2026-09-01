@@ -51,10 +51,10 @@ index 9d4fd5a4..46354d31 100644
 +}
 diff --git a/apps/weblibre/lib/integration/profile_runtime_check_page.dart b/apps/weblibre/lib/integration/profile_runtime_check_page.dart
 new file mode 100644
-index 00000000..6b944039
+index 00000000..2eb7ec04
 --- /dev/null
 +++ b/apps/weblibre/lib/integration/profile_runtime_check_page.dart
-@@ -0,0 +1,605 @@
+@@ -0,0 +1,602 @@
 +import 'dart:async';
 +
 +import 'package:flutter/material.dart';
@@ -219,12 +219,12 @@ index 00000000..6b944039
 +
 +  MobileProfile? _slotProfile(String name) => _slots[name]?.profile;
 +
-+  void _createSlot(String name) {
++  Future<void> _createSlot(String name) {
 +    final existing = _slots[name];
 +    if (existing != null) {
 +      setState(() {});
 +      _append('创建 $name', '已存在：${existing.browserProfileId}');
-+      return;
++      return Future<void>.value();
 +    }
 +    final now = DateTime.now().toUtc();
 +    final browserProfileId = ProfileIdentity.newUuidV4();
@@ -244,6 +244,7 @@ index 00000000..6b944039
 +      browserProfileId: browserProfileId,
 +    ));
 +    _append('创建 $name', 'browserProfileId=$browserProfileId');
++    return Future<void>.value();
 +  }
 +
 +  Future<void> _refreshSelfCheck() {
@@ -551,13 +552,9 @@ index 00000000..6b944039
 +                  )),
 +                  _sectionCard('Profile 操作（B3-01～B3-07 / B3-15～B3-16）', Column(
 +                    children: [
-+                      _operationButton('创建 B3-A', () {
-+                        _createSlot('B3-A');
-+                      }),
++                      _operationButton('创建 B3-A', () => _createSlot('B3-A')),
 +                      const SizedBox(height: 6),
-+                      _operationButton('创建 B3-B', () {
-+                        _createSlot('B3-B');
-+                      }),
++                      _operationButton('创建 B3-B', () => _createSlot('B3-B')),
 +                      const SizedBox(height: 6),
 +                      _operationButton('启动 B3-A', () => _launchSlot('B3-A')),
 +                      const SizedBox(height: 6),
