@@ -1,0 +1,659 @@
+diff --git a/apps/weblibre/lib/features/settings/presentation/screens/advanced_settings.dart b/apps/weblibre/lib/features/settings/presentation/screens/advanced_settings.dart
+index 9d4fd5a4..46354d31 100644
+--- a/apps/weblibre/lib/features/settings/presentation/screens/advanced_settings.dart
++++ b/apps/weblibre/lib/features/settings/presentation/screens/advanced_settings.dart
+@@ -39,6 +39,7 @@ import 'package:weblibre/features/user/domain/providers.dart';
+ import 'package:weblibre/features/user/domain/repositories/cache.dart';
+ import 'package:weblibre/features/user/domain/repositories/engine_settings.dart';
+ import 'package:weblibre/features/user/domain/repositories/general_settings.dart';
++import 'package:weblibre/integration/profile_runtime_check_page.dart';
+ import 'package:weblibre/utils/exit_app.dart';
+ import 'package:weblibre/utils/ui_helper.dart';
+ 
+@@ -118,6 +119,12 @@ const List<SettingsSectionDefinition> advancedSettingsSections = [
+         keywords: ['refresh ui'],
+         child: _ResetUITile(),
+       ),
++      SettingsEntryDefinition(
++        title: 'Profile Runtime 检查',
++        subtitle: 'B.3 验收：运行时状态、健康探测与日志导出',
++        keywords: ['profile', 'runtime', 'b3'],
++        child: _ProfileRuntimeCheckTile(),
++      ),
+     ],
+   ),
+ ];
+@@ -513,3 +520,30 @@ class _ResetUITile extends ConsumerWidget {
+     );
+   }
+ }
++
++class _ProfileRuntimeCheckTile extends StatelessWidget {
++  const _ProfileRuntimeCheckTile();
++
++  @override
++  Widget build(BuildContext context) {
++    return CustomListTile(
++      title: 'Profile Runtime 检查',
++      subtitle: 'B.3 验收：运行时状态、健康探测与日志导出',
++      prefix: Padding(
++        padding: const EdgeInsets.only(right: 16.0),
++        child: Icon(
++          Icons.assessment,
++          size: 24,
++          color: Theme.of(context).colorScheme.onSurfaceVariant,
++        ),
++      ),
++      suffix: FilledButton.icon(
++        onPressed: () {
++          showProfileRuntimeCheckPage(context);
++        },
++        icon: const Icon(Icons.assessment),
++        label: const Text('打开'),
++      ),
++    );
++  }
++}
+diff --git a/apps/weblibre/lib/integration/profile_runtime_check_page.dart b/apps/weblibre/lib/integration/profile_runtime_check_page.dart
+new file mode 100644
+index 00000000..8a05d416
+--- /dev/null
++++ b/apps/weblibre/lib/integration/profile_runtime_check_page.dart
+@@ -0,0 +1,597 @@
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++import 'package:mobile_profile_domain/mobile_profile_domain.dart';
++import 'package:mobile_profile_storage/mobile_profile_storage.dart';
++import 'package:mobile_profile_weblibre/mobile_profile_weblibre.dart';
++import 'package:path_provider/path_provider.dart';
++import 'package:weblibre/integration/mobile_profile_runtime_bridge.dart';
++
++/// B.3 真机验收检查页（patches/b4721ae6/003 载体）。
++///
++/// 职责边界（不扩抽象）：
++/// - 只做矩阵 B3-01～B3-20 需要的五件事：创建/启动/停止/切换 Profile、
++///   健康裁决与恢复、selfCheck 快照、日志文件导出；
++/// - 全部状态展示来自真实返回值（manager 句柄 / selfCheck / health），
++///   本页不缓存、不推测任何状态；
++/// - 完整中文产品 UI 属于 PR-C，本页标签为验收用最小中文。
++///
++/// 入口：设置 → 高级 → 开发者工具 → Profile Runtime 检查。
++class ProfileRuntimeCheckPage extends StatefulWidget {
++  const ProfileRuntimeCheckPage({super.key});
++
++  @override
++  State<ProfileRuntimeCheckPage> createState() => _ProfileRuntimeCheckPageState();
++}
++
++/// 驱动栈：真实目录存储 + SQLite 会话持久化 + MethodChannel Bridge。
++class _B3Driver {
++  _B3Driver({
++    required this.filesDir,
++    required this.store,
++    required this.manager,
++    required this.bridge,
++  });
++
++  final String filesDir;
++  final ProfileStore store;
++  final WebLibreRuntimeManager manager;
++  final MethodChannelRuntimeBridge bridge;
++}
++
++class _CheckEntry {
++  _CheckEntry({required this.time, required this.action, required this.detail});
++
++  final String time;
++  final String action;
++  final String detail;
++}
++
++class _ProfileSlot {
++  _ProfileSlot({required this.name, required this.profile, required this.browserProfileId});
++
++  final String name;
++  final MobileProfile profile;
++  final String browserProfileId;
++}
++
++class _ProfileRuntimeCheckPageState extends State<ProfileRuntimeCheckPage> {
++  _B3Driver? _driver;
++  String? _initError;
++
++  final Map<String, _ProfileSlot> _slots = <String, _ProfileSlot>{};
++  final List<_CheckEntry> _transcript = <_CheckEntry>[];
++
++  Map<String, Object?>? _selfCheck;
++  Map<String, Object?>? _health;
++  String? _selfCheckError;
++  String? _healthError;
++  String? _logPath;
++  int? _logSizeBytes;
++  String? _logTail;
++  bool _logTruncated = false;
++  bool _busy = false;
++
++  WebLibreRuntimeHandle? get _boundHandle => _driver?.manager.bound;
++
++  @override
++  void initState() {
++    super.initState();
++    // 页面打开即建立驱动栈；失败时整页提示，操作按钮不再逐个报错。
++    unawaited(_initDriver());
++  }
++
++  Future<void> _initDriver() async {
++    try {
++      await _ensureDriver();
++    } catch (error) {
++      if (mounted) {
++        setState(() => _initError = '$error');
++      }
++    }
++  }
++
++  @override
++  void dispose() {
++    // 驱动栈的生命周期与页面一致；退出即释放 SQLite 连接。
++    unawaited(_closeDriver());
++    super.dispose();
++  }
++
++  Future<void> _closeDriver() async {
++    try {
++      await _driver?.store.close();
++    } catch (_) {
++      // 关闭失败不影响页面退出。
++    }
++  }
++
++  Future<_B3Driver> _ensureDriver() async {
++    final existing = _driver;
++    if (existing != null) return existing;
++    final filesDir = (await getApplicationSupportDirectory()).path;
++    final store = await ProfileStore.open('$filesDir/mobile_profile_b3.db');
++    final driver = _B3Driver(
++      filesDir: filesDir,
++      store: store,
++      manager: WebLibreRuntimeManager(
++        storage: DirectoryWebLibreProfileStorage(filesDir),
++        binder: MethodChannelRuntimeBridge(),
++        filesDir: filesDir,
++        sessionStore: store.runtimeSessions,
++      ),
++      bridge: MethodChannelRuntimeBridge(),
++    );
++    setState(() => _driver = driver);
++    return driver;
++  }
++
++  void _append(String action, String detail) {
++    setState(() {
++      _transcript.insert(
++          0, _CheckEntry(
++        time: DateTime.now().toLocal().toString().substring(11, 19),
++        action: action,
++        detail: detail,
++      ));
++      if (_transcript.length > 80) {
++        _transcript.removeRange(80, _transcript.length);
++      }
++    });
++  }
++
++  Future<void> _run(String action, Future<String> Function() op) async {
++    if (_busy) {
++      _append(action, '已有操作进行中，本次忽略（操作互斥）');
++      return;
++    }
++    setState(() => _busy = true);
++    try {
++      final detail = await op();
++      _append(action, detail);
++    } catch (error) {
++      _append(action, '失败：$error');
++    } finally {
++      setState(() => _busy = false);
++    }
++  }
++
++  MobileProfile? _slotProfile(String name) => _slots[name]?.profile;
++
++  String _slotBrowserId(String name) =>
++      _slots[name]?.browserProfileId ?? '';
++
++  void _createSlot(String name) {
++    final existing = _slots[name];
++    if (existing != null) {
++      setState(() {});
++      _append('创建 $name', '已存在：${existing.browserProfileId}');
++      return;
++    }
++    final now = DateTime.now().toUtc();
++    final browserProfileId = ProfileIdentity.newUuidV4();
++    final profile = MobileProfile(
++      id: ProfileIdentity.newUuidV4(),
++      name: name,
++      createdAt: now,
++      updatedAt: now,
++      browserProfileRef: 'browser-$browserProfileId',
++      deviceProfileRef: '',
++      networkRouteRef: '',
++      status: ProfileStatus.created,
++    );
++    setState(() => _slots[name] = _ProfileSlot(
++      name: name,
++      profile: profile,
++      browserProfileId: browserProfileId,
++    ));
++    _append('创建 $name', 'browserProfileId=$browserProfileId');
++  }
++
++  Future<void> _refreshSelfCheck() {
++    return _run('native selfCheck', () async {
++      final driver = await _ensureDriver();
++      final Map<String, Object?> raw;
++      try {
++        raw = await driver.bridge.selfCheck();
++      } catch (error) {
++        // 先落错误字段（检查页显式展示），再上抛由操作记录留痕。
++        setState(() => _selfCheckError = '$error');
++        rethrow;
++      }
++      setState(() {
++        _selfCheck = raw;
++        _selfCheckError = null;
++        final path = raw['logFile'];
++        _logPath = path is String ? path : null;
++        final size = raw['logSizeBytes'];
++        _logSizeBytes = size is int ? size : null;
++      });
++      return 'ok（gecko=${raw['engineProviderState']}，'
++          'committed=${raw['arbiterCommitted']}，pid=${raw['appPid']}）';
++    });
++  }
++
++  Future<void> _refreshHealth() {
++    return _run('health 探测', () async {
++      final handle = _boundHandle;
++      if (handle == null) {
++        return '失败：当前无运行时会话可探测（先启动 Profile）';
++      }
++      final driver = await _ensureDriver();
++      final raw = await driver.bridge.health(
++        browserProfileId: handle.browserProfileId,
++      );
++      setState(() {
++        _health = raw;
++        _healthError = null;
++      });
++      return 'ok（alive=${raw['alive']}，runtimeAlive=${raw['runtimeAlive']}，'
++          'geckoState=${raw['geckoState']}，probeKind=${raw['probeKind']}）';
++    });
++  }
++
++  Future<void> _refreshLog() {
++    return _run('读取日志尾部', () async {
++      final driver = await _ensureDriver();
++      final raw = await driver.bridge.readLogTail(maxChars: 8000);
++      final text = raw['text'];
++      final path = raw['path'];
++      final total = raw['totalBytes'];
++      setState(() {
++        _logTail = text is String ? text : '';
++        _logPath = path is String ? path : _logPath;
++        _logSizeBytes = total is int ? total : _logSizeBytes;
++        _logTruncated = raw['truncated'] == true;
++      });
++      return 'ok（totalBytes=${total ?? 0}，truncated=${raw['truncated']}）';
++    });
++  }
++
++  Future<void> _launchSlot(String name) {
++    final profile = _slotProfile(name);
++    if (profile == null) {
++      _append('启动 $name', '失败：先创建 $name');
++      return Future<void>.value();
++    }
++    return _run('启动 $name', () async {
++      final driver = await _ensureDriver();
++      final handle = await driver.manager.launch(profile);
++      return 'ok（state=${webLibreRuntimeStateZhLabel(handle.state)}，'
++          'session=${handle.sessionId}，gen=${handle.generation}，'
++          'browser=${handle.browserProfileId}）';
++    });
++  }
++
++  Future<void> _stop() {
++    final handle = _boundHandle;
++    if (handle == null) {
++      _append('停止', '失败：当前无运行时会话');
++      return Future<void>.value();
++    }
++    return _run('停止', () async {
++      final driver = await _ensureDriver();
++      final stopped = await driver.manager.stop();
++      return 'ok（state=${webLibreRuntimeStateZhLabel(stopped.state)}）';
++    });
++  }
++
++  Future<void> _recover(String kind) {
++    return _run('恢复（$kind）', () async {
++      final driver = await _ensureDriver();
++      final report = kind == 'Dart 重启'
++          ? await driver.manager.recoverAfterDartRestart()
++          : await driver.manager.recoverAfterApplicationProcessDeath();
++      if (report.isEmpty) {
++        return 'ok（无可恢复会话，状态保持不变）';
++      }
++      final sb = StringBuffer('ok：');
++      for (final entry in report.recoveredSessions) {
++        sb.write('会话 ${entry.$1} 已收敛（恢复前状态 ${entry.$2}）；');
++      }
++      final rehydrated = report.rehydratedSessionId;
++      if (rehydrated != null) {
++        sb.write('重建槽位 $rehydrated；');
++      }
++      return sb.toString();
++    });
++  }
++
++  Future<void> _resolveUnknown() {
++    return _run('健康裁决 unknown', () async {
++      final driver = await _ensureDriver();
++      final handle = await driver.manager.resolveUnknownViaHealth();
++      return 'ok（state=${webLibreRuntimeStateZhLabel(handle.state)}，'
++          'session=${handle.sessionId}，gen=${handle.generation}）';
++    });
++  }
++
++  Future<void> _confirmDead() {
++    return _run('确认死亡', () async {
++      final driver = await _ensureDriver();
++      final handle = await driver.manager.confirmUnknownDead();
++      return 'ok（state=${webLibreRuntimeStateZhLabel(handle.state)}）';
++    });
++  }
++
++  Future<void> _confirmAlive() {
++    return _run('确认存活', () async {
++      final driver = await _ensureDriver();
++      final handle = await driver.manager.confirmUnknownAlive();
++      return 'ok（state=${webLibreRuntimeStateZhLabel(handle.state)}，'
++          'session=${handle.sessionId}，gen=${handle.generation}）';
++    });
++  }
++
++  Future<void> _attachIdentity() {
++    final handle = _boundHandle;
++    if (handle == null || handle.sessionId.isEmpty) {
++      _append('附加会话身份', '失败：当前无带会话的运行时会话');
++      return Future<void>.value();
++    }
++    final browserProfileId = handle.browserProfileId;
++    final sessionId = handle.sessionId;
++    final generation = handle.generation;
++    return _run('附加会话身份', () async {
++      final driver = await _ensureDriver();
++      final adopted = await driver.bridge.attachSessionIdentity(
++        browserProfileId: browserProfileId,
++        sessionId: sessionId,
++        generation: generation,
++      );
++      return adopted
++          ? 'ok（adopted=true，session=$sessionId，gen=$generation）'
++          : '被拒绝（adopted=false，native 提交与目标不一致）';
++    });
++  }
++
++  Widget _field(String label, Object? value) {
++    return Padding(
++      padding: const EdgeInsets.symmetric(vertical: 2),
++      child: Row(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          SizedBox(
++            width: 132,
++            child: Text(label,
++                style: const TextStyle(
++                    fontSize: 13, fontWeight: FontWeight.w600)),
++          ),
++          Expanded(
++            child: SelectableText(
++              value == null ? '（空）' : '$value',
++              style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++
++  Widget _sectionCard(String title, Widget body) {
++    return Card(
++      margin: const EdgeInsets.symmetric(vertical: 6),
++      child: Padding(
++        padding: const EdgeInsets.all(12),
++        children: [
++          Text(title,
++              style: const TextStyle(
++                  fontSize: 15, fontWeight: FontWeight.w700)),
++          const SizedBox(height: 8),
++          body,
++        ],
++      ),
++    );
++  }
++
++  Widget _operationButton(String label, Future<void> Function() onTap) {
++    return SizedBox(
++      width: double.infinity,
++      child: OutlinedButton(
++        onPressed: _busy ? null : onTap,
++        child: Text(label),
++      ),
++    );
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    final handle = _boundHandle;
++    return Scaffold(
++      appBar: AppBar(
++        title: const Text('Profile Runtime 检查（B.3 验收）'),
++        actions: [
++          IconButton(
++            icon: const Icon(Icons.refresh),
++            tooltip: '刷新自检',
++            onPressed: _busy ? null : () => _refreshSelfCheck(),
++          ),
++          IconButton(
++            icon: const Icon(Icons.close),
++            tooltip: '关闭',
++            onPressed: () => Navigator.of(context).pop(),
++          ),
++        ],
++      ),
++      body: _initError != null
++          ? Padding(
++              padding: const EdgeInsets.all(24),
++              child: SelectableText('初始化失败：$_initError',
++                  style: theme.textTheme.bodyLarge),
++            )
++          : RefreshIndicator(
++              onRefresh: _refreshSelfCheck,
++              child: ListView(
++                padding: const EdgeInsets.all(12),
++                children: [
++                  _sectionCard('运行时会话（编排真相）', Column(
++                    crossAxisAlignment: CrossAxisAlignment.start,
++                    children: [
++                      _field('状态', handle == null
++                          ? '（无会话）'
++                          : webLibreRuntimeStateZhLabel(handle.state)),
++                      if (handle != null) ...[
++                        _field('Profile ID', handle.profileId),
++                        _field('浏览器 Profile', handle.browserProfileId),
++                        _field('sessionId', handle.sessionId),
++                        _field('generation', handle.generation),
++                      ],
++                    ],
++                  )),
++                  _sectionCard('原生自检（selfCheck，独立事实源）', Column(
++                    crossAxisAlignment: CrossAxisAlignment.start,
++                    children: [
++                      if (_selfCheckError != null)
++                        Text('自检失败：$_selfCheckError',
++                            style: TextStyle(
++                                color: theme.colorScheme.error, fontSize: 13)),
++                      if (_selfCheck != null) ...[
++                        _field('Gecko 状态', _selfCheck!['engineProviderState']),
++                        _field('Gecko Profile',
++                            _selfCheck!['engineProviderProfileId']),
++                        _field('Arbiter 提交', _selfCheck!['arbiterCommitted']),
++                        _field('Arbiter 绑定目录',
++                            _selfCheck!['arbiterBoundFolder']),
++                        _field('Arbiter 状态', _selfCheck!['arbiterState']),
++                        _field('桥内会话', _selfCheck!['identitySessionId']),
++                        _field('桥内代数', _selfCheck!['identityGeneration']),
++                        _field('进程 PID', _selfCheck!['appPid']),
++                        _field('检查时间', _selfCheck!['checkedAt']),
++                      ],
++                      const SizedBox(height: 8),
++                      Row(
++                        children: [
++                          _operationButton('运行自检', _refreshSelfCheck),
++                        ],
++                      ),
++                    ],
++                  )),
++                  _sectionCard('健康探测（health，B3-12 判别器）', Column(
++                    crossAxisAlignment: CrossAxisAlignment.start,
++                    children: [
++                      if (_healthError != null)
++                        Text('探测失败：$_healthError',
++                            style: TextStyle(
++                                color: theme.colorScheme.error, fontSize: 13)),
++                      if (_health != null) ...[
++                        _field('存活（最终裁决）', _health!['alive']),
++                        _field('runtimeAlive', _health!['runtimeAlive']),
++                        _field('绑定存在', _health!['bindingPresent']),
++                        _field('探测类型', _health!['probeKind']),
++                        _field('Gecko 状态', _health!['geckoState']),
++                        _field('Gecko Profile', _health!['geckoProfileId']),
++                        _field('观测时间', _health!['observedAt']),
++                        _field('进程 PID', _health!['pid']),
++                      ],
++                      const SizedBox(height: 8),
++                      _operationButton('运行 health 探测', _refreshHealth),
++                    ],
++                  )),
++                  _sectionCard('Profile 操作（B3-01～B3-07 / B3-15～B3-16）', Column(
++                    children: [
++                      _operationButton('创建 B3-A', () => _createSlot('B3-A')),
++                      const SizedBox(height: 6),
++                      _operationButton('创建 B3-B', () => _createSlot('B3-B')),
++                      const SizedBox(height: 6),
++                      _operationButton('启动 B3-A', () => _launchSlot('B3-A')),
++                      const SizedBox(height: 6),
++                      _operationButton('启动 B3-B（切换）',
++                          () => _launchSlot('B3-B')),
++                      const SizedBox(height: 6),
++                      _operationButton('停止（unbind）', _stop),
++                      const SizedBox(height: 6),
++                      _operationButton('附加会话身份（B3-08/19）',
++                          _attachIdentity),
++                      const SizedBox(height: 6),
++                      _operationButton('健康裁决 unknown（B3-17/18）',
++                          _resolveUnknown),
++                      const SizedBox(height: 6),
++                      _operationButton('确认存活（B3-11）', _confirmAlive),
++                      const SizedBox(height: 6),
++                      _operationButton('确认死亡', _confirmDead),
++                      const SizedBox(height: 6),
++                      _operationButton('进程死亡后恢复（B3-10/12）',
++                          () => _recover('进程死亡')),
++                      const SizedBox(height: 6),
++                      _operationButton('Dart 重启后恢复（B3-11）',
++                          () => _recover('Dart 重启')),
++                    ],
++                  )),
++                  _sectionCard('日志文件（取证导出）', Column(
++                    crossAxisAlignment: CrossAxisAlignment.start,
++                    children: [
++                      _field('日志路径', _logPath ?? '（尚未自检）'),
++                      _field('文件大小（字节）', _logSizeBytes),
++                      const SizedBox(height: 8),
++                      _operationButton('读取日志尾部', _refreshLog),
++                      const SizedBox(height: 6),
++                      _operationButton('清空日志', () => _run('清空日志',
++                          () async {
++                        final driver = await _ensureDriver();
++                        await driver.bridge.clearLog();
++                        return 'ok（日志已清空）';
++                      })),
++                      const SizedBox(height: 8),
++                      if (_logTail != null && _logTail!.isNotEmpty)
++                        Container(
++                          width: double.infinity,
++                          padding: const EdgeInsets.all(8),
++                          decoration: BoxDecoration(
++                            color: theme.colorScheme.surfaceContainerHighest,
++                            borderRadius: BorderRadius.circular(6),
++                          ),
++                          child: SelectableText(
++                            _logTruncated
++                                ? '（仅显示末尾 8000 字符）\n$_logTail'
++                                : '$_logTail',
++                            style: const TextStyle(
++                                fontSize: 11, fontFamily: 'monospace'),
++                          ),
++                        ),
++                      const SizedBox(height: 6),
++                      Text(
++                        '导出（debug 包）：adb shell run-as eu.weblibre.gecko '
++                        'cat files/b3-bridge.log > b3-bridge-file.log，'
++                        '归档后回填 runbook。',
++                        style: const TextStyle(fontSize: 12),
++                      ),
++                    ],
++                  )),
++                  _sectionCard('操作记录（最近 80 条）',
++                      _transcript.isEmpty
++                          ? const Text('（暂无操作）',
++                              style: TextStyle(fontSize: 13))
++                          : Column(
++                              children: [
++                                for (final entry in _transcript)
++                                  Padding(
++                                    padding:
++                                        const EdgeInsets.symmetric(vertical: 3),
++                                    child: SelectableText(
++                                      '[${entry.time}] ${entry.action} → '
++                                      '${entry.detail}',
++                                      style: const TextStyle(
++                                          fontSize: 12,
++                                          fontFamily: 'monospace'),
++                                    ),
++                                  ),
++                              ],
++                            )),
++                ],
++              ),
++            ),
++      ),
++    );
++  }
++}
++
++/// 从开发者工具入口打开检查页（全屏对话框，不新增路由，避免上游路由代码生成）。
++void showProfileRuntimeCheckPage(BuildContext context) {
++  showDialog<void>(
++    context: context,
++    useRootBarrier: false,
++    builder: (BuildContext dialogContext) =>
++        const Dialog.fullscreen(child: ProfileRuntimeCheckPage()),
++  );
++}

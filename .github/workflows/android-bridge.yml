@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   android-bridge:
-    name: 上游 + 001/002 补丁构建
+    name: 上游 + 001/002/003 补丁构建
     runs-on: ubuntu-latest
     steps:
       - name: 检出仓库与子模块
@@ -72,14 +72,16 @@ jobs:
       - name: 核验并准备 WebLibre 工作树
         run: bash ./tools/prepare-weblibre-worktree.sh
 
-      - name: 应用 Mobile Profile 补丁（001/002）
+      - name: 应用 Mobile Profile 补丁（001/002/003）
         run: |
           set -euo pipefail
           git -C vendor/weblibre apply --check ../../patches/b4721ae6/001-add-mobile-profile-dependencies.patch
           git -C vendor/weblibre apply --check ../../patches/b4721ae6/002-add-profile-runtime-bridge.patch
+          git -C vendor/weblibre apply --check ../../patches/b4721ae6/003-profile-runtime-check-page.patch
           git -C vendor/weblibre apply ../../patches/b4721ae6/001-add-mobile-profile-dependencies.patch
           git -C vendor/weblibre apply ../../patches/b4721ae6/002-add-profile-runtime-bridge.patch
-          echo "已应用 001/002 补丁"
+          git -C vendor/weblibre apply ../../patches/b4721ae6/003-profile-runtime-check-page.patch
+          echo "已应用 001/002/003 补丁"
 
       - name: 获取 WebLibre 依赖
         working-directory: vendor/weblibre

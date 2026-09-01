@@ -1,8 +1,9 @@
 diff --git a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt
 new file mode 100644
+index 00000000..6130dd5c
 --- /dev/null
 +++ b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/runtime/RuntimeBridgePlugin.kt
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,374 @@
 +package eu.weblibre.gecko.runtime
 +
 +import android.content.Context
@@ -17,6 +18,7 @@ new file mode 100644
 +import io.flutter.embedding.engine.FlutterEngine
 +import io.flutter.plugin.common.MethodCall
 +import io.flutter.plugin.common.MethodChannel
++import java.io.File
 +import java.text.SimpleDateFormat
 +import java.util.Date
 +import java.util.Locale
@@ -43,10 +45,17 @@ new file mode 100644
 + * - 新进程在 bootstrap 提交核验后必须经 attachSessionIdentity 重建身份
 + *   （核验条件：StartupArbiter.committedProfileId == 目标），否则
 + *   "Gecko 启动成功但 Dart 判死"。这是 B.3 真机验收的前置链路。
++ *
++ * 取证（B.3）：除 logcat（TAG=MobileProfileBridge）外，全部操作同步追加
++ * 到应用私有文件 b3-bridge.log（超限轮转），供 adb pull 导出；
++ * selfCheck / readLogTail / clearLog 是只读/诊断通道，不改变任何状态机。
 + */
 +object RuntimeBridgePlugin {
 +    private const val CHANNEL = "weblibre/runtime_bridge"
 +    private const val TAG = "MobileProfileBridge"
++    private const val LOG_FILE_NAME = "b3-bridge.log"
++    private const val LOG_FILE_MAX_BYTES = 5L * 1024 * 1024
++    private const val LOG_TAIL_MAX_CHARS = 100_000
 +
 +    /**
 +     * health 探测（B.3 Gate）：
@@ -61,11 +70,17 @@ new file mode 100644
 +    @Volatile private var identitySessionId: String? = null
 +    @Volatile private var identityGeneration: Int? = null
 +
++    @Volatile private var appContextRef: Context? = null
++    private var logFileRef: File? = null
++
 +    private val mainHandler = Handler(Looper.getMainLooper())
 +
 +    fun register(context: Context, flutterEngine: FlutterEngine) {
 +        val appContext = context.applicationContext
-+        Log.i(TAG, "register pid=${Process.myPid()}")
++        appContextRef = appContext
++        val file = File(appContext.filesDir, LOG_FILE_NAME)
++        logFileRef = file
++        log("register pid=${Process.myPid()} logFile=${file.absolutePath}")
 +        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
 +            .setMethodCallHandler { call, result ->
 +                try {
@@ -74,12 +89,37 @@ new file mode 100644
 +                        "unbind" -> handleUnbind(appContext, call, result)
 +                        "health" -> handleHealth(call, result)
 +                        "attachSessionIdentity" -> handleAttachIdentity(call, result)
++                        "selfCheck" -> handleSelfCheck(result)
++                        "readLogTail" -> handleReadLogTail(call, result)
++                        "clearLog" -> handleClearLog(result)
 +                        else -> result.notImplemented()
 +                    }
 +                } catch (t: Throwable) {
 +                    result.error("bridge_error", t.message ?: t.javaClass.simpleName, null)
 +                }
 +            }
++    }
++
++    /**
++     * 文件日志：logcat 之外可导出的第二份证据。仅追加、仅诊断，
++     * 写失败不得影响协议（诊断 fail-open，协议 fail-closed）。
++     */
++    private fun log(message: String) {
++        Log.i(TAG, message)
++        val context = appContextRef ?: return
++        try {
++            synchronized(this) {
++                val file = logFileRef
++                    ?: File(context.filesDir, LOG_FILE_NAME).also { logFileRef = it }
++                if (file.length() > LOG_FILE_MAX_BYTES) {
++                    file.writeText("")
++                    Log.i(TAG, "log rotated (truncated) path=${file.absolutePath}")
++                }
++                file.appendText("[$message]\n")
++            }
++        } catch (t: Throwable) {
++            Log.w(TAG, "log file append failed: ${t.message}")
++        }
 +    }
 +
 +    private fun handleBind(
@@ -94,8 +134,7 @@ new file mode 100644
 +        val committed = StartupArbiter.committedProfileId()
 +        if (committed != null && committed.equals(target, ignoreCase = true)) {
 +            adoptIdentity(sessionId, generation)
-+            Log.i(
-+                TAG,
++            log(
 +                "bind bound target=$target session=$sessionId gen=$generation " +
 +                    "pid=${Process.myPid()} at=${isoNow()}",
 +            )
@@ -113,8 +152,7 @@ new file mode 100644
 +        val armed = GeckoProfileApiImpl(appContext)
 +            .armProfileRestart(target, "mobile_profile_switch")
 +        if (armed) {
-+            Log.i(
-+                TAG,
++            log(
 +                "bind restart_required target=$target current=$committed " +
 +                    "session=$sessionId gen=$generation pid=${Process.myPid()} at=${isoNow()}",
 +            )
@@ -128,10 +166,7 @@ new file mode 100644
 +                )
 +            )
 +        } else {
-+            Log.w(
-+                TAG,
-+                "bind arm_failed target=$target state=${StartupArbiter.currentState()}",
-+            )
++            log("bind arm_failed target=$target state=${StartupArbiter.currentState()}")
 +            result.error(
 +                "arm_failed",
 +                "RestartCoordinator refused the restart (state=${StartupArbiter.currentState()})",
@@ -148,6 +183,7 @@ new file mode 100644
 +        val target = stringArg(call, "browserProfileId").lowercase()
 +        val committed = StartupArbiter.committedProfileId()
 +        if (committed == null || !committed.equals(target, ignoreCase = true)) {
++            log("unbind rejected target=$target committed=$committed")
 +            result.error(
 +                "not_bound",
 +                "process is not committed to $target (committed=$committed)",
@@ -160,14 +196,13 @@ new file mode 100644
 +        // 再 exitProcess(0)。result.success() 在主线程同步写出应答字节；
 +        // terminate 投递到主线程队列末尾，保证应答先于进程退出送达。
 +        // 该顺序是 B.3 真机集成测试的必测点（Dart await 不得悬挂）。
-+        Log.i(
-+            TAG,
++        log(
 +            "unbind exiting target=$target session=${call.argument<String>("sessionId")} " +
 +                "gen=${call.argument<Int>("generation")} pid=${Process.myPid()} at=${isoNow()}",
 +        )
 +        result.success(mapOf("result" to "exiting"))
 +        mainHandler.post {
-+            Log.i(TAG, "unbind terminate pid=${Process.myPid()} at=${isoNow()}")
++            log("unbind terminate pid=${Process.myPid()} at=${isoNow()}")
 +            GeckoProfileApiImpl(appContext).completeProfileRestart()
 +        }
 +    }
@@ -184,11 +219,7 @@ new file mode 100644
 +        // 真实 Gecko 探测（B.3 Gate）：EngineProvider 维护的运行时状态
 +        // 是与 Arbiter 独立的第二事实源；Live.profileId 交叉核验目标。
 +        val gecko = EngineProvider.runtimeState()
-+        val geckoStateName = when (gecko) {
-+            is GeckoRuntimeState.NeverCreated -> "never_created"
-+            is GeckoRuntimeState.Live -> "live"
-+            is GeckoRuntimeState.Shutdown -> "shutdown"
-+        }
++        val geckoStateName = geckoStateName(gecko)
 +        val geckoProfileId = (gecko as? GeckoRuntimeState.Live)?.profileId
 +        val runtimeAlive = gecko is GeckoRuntimeState.Live &&
 +            gecko.profileId.equals(expected, ignoreCase = true)
@@ -210,8 +241,7 @@ new file mode 100644
 +            payload["sessionId"] = identitySessionId
 +            payload["generation"] = identityGeneration
 +        }
-+        Log.i(
-+            TAG,
++        log(
 +            "health expected=$expected committed=$committed binding=$bindingPresent " +
 +                "gecko=$geckoStateName geckoProfile=$geckoProfileId alive=${payload["alive"]} " +
 +                "session=$identitySessionId gen=$identityGeneration " +
@@ -228,7 +258,7 @@ new file mode 100644
 +        val committed = StartupArbiter.committedProfileId()
 +        if (committed == null || !committed.equals(target, ignoreCase = true)) {
 +            // 拒绝伪造：身份必须与 native 提交事实一致才可注入。
-+            Log.w(TAG, "attachSessionIdentity rejected target=$target committed=$committed")
++            log("attachSessionIdentity rejected target=$target committed=$committed")
 +            result.success(
 +                mapOf(
 +                    "adopted" to false,
@@ -238,12 +268,96 @@ new file mode 100644
 +            return
 +        }
 +        adoptIdentity(sessionId, generation)
-+        Log.i(
-+            TAG,
++        log(
 +            "attachSessionIdentity adopted target=$target session=$sessionId " +
 +                "gen=$generation pid=${Process.myPid()} at=${isoNow()}",
 +        )
 +        result.success(mapOf("adopted" to true))
++    }
++
++    /**
++     * 只读诊断快照（B.3 检查页）：聚合四个独立事实源，供真机取证与
++     * 交叉核验。不触发任何状态迁移。
++     */
++    private fun handleSelfCheck(result: MethodChannel.Result) {
++        val gecko = EngineProvider.runtimeState()
++        val geckoStateName = geckoStateName(gecko)
++        val geckoProfileId = (gecko as? GeckoRuntimeState.Live)?.profileId
++        val committed = StartupArbiter.committedProfileId()
++        val boundFolder = StartupArbiter.boundProfileFolder()
++        val arbiterState = StartupArbiter.currentState()
++        val file = logFileRef
++        val logSizeBytes = file?.let { if (it.exists()) it.length() else 0L } ?: 0L
++        val payload = mapOf(
++            "engineProviderState" to geckoStateName,
++            "engineProviderProfileId" to geckoProfileId,
++            "arbiterCommitted" to committed,
++            "arbiterBoundFolder" to boundFolder,
++            "arbiterState" to arbiterState,
++            "identitySessionId" to identitySessionId,
++            "identityGeneration" to identityGeneration,
++            "logFile" to file?.absolutePath,
++            "logSizeBytes" to logSizeBytes,
++            "appPid" to Process.myPid(),
++            "checkedAt" to isoNow(),
++        )
++        log(
++            "selfCheck gecko=$geckoStateName geckoProfile=$geckoProfileId " +
++                "committed=$committed boundFolder=$boundFolder arbiter=$arbiterState " +
++                "session=$identitySessionId gen=$identityGeneration logSize=$logSizeBytes " +
++                "pid=${Process.myPid()}",
++        )
++        result.success(payload)
++    }
++
++    /**
++     * 读取 b3-bridge.log 末尾 maxChars 个字符（诊断通道，只读）。
++     */
++    private fun handleReadLogTail(call: MethodCall, result: MethodChannel.Result) {
++        val maxChars = intArg(call, "maxChars").coerceIn(1, LOG_TAIL_MAX_CHARS)
++        val file = logFileRef
++        if (file == null || !file.exists()) {
++            log("readLogTail empty maxChars=$maxChars")
++            result.success(
++                mapOf(
++                    "text" to "",
++                    "totalBytes" to 0L,
++                    "truncated" to false,
++                    "path" to null,
++                )
++            )
++            return
++        }
++        val totalBytes = file.length()
++        val content = file.readText()
++        val text =
++            if (content.length > maxChars) content.substring(content.length - maxChars)
++            else content
++        val truncated = content.length > maxChars
++        log("readLogTail maxChars=$maxChars totalBytes=$totalBytes truncated=$truncated")
++        result.success(
++            mapOf(
++                "text" to text,
++                "totalBytes" to totalBytes,
++                "truncated" to truncated,
++                "path" to file.absolutePath,
++            )
++        )
++    }
++
++    private fun handleClearLog(result: MethodChannel.Result) {
++        val file = logFileRef
++        if (file != null && file.exists()) {
++            file.writeText("")
++        }
++        log("clearLog path=${file?.absolutePath}")
++        result.success(mapOf("cleared" to true))
++    }
++
++    private fun geckoStateName(gecko: GeckoRuntimeState): String = when (gecko) {
++        is GeckoRuntimeState.NeverCreated -> "never_created"
++        is GeckoRuntimeState.Live -> "live"
++        is GeckoRuntimeState.Shutdown -> "shutdown"
 +    }
 +
 +    private fun adoptIdentity(sessionId: String, generation: Int) {
@@ -264,12 +378,12 @@ new file mode 100644
 +            .apply { timeZone = TimeZone.getTimeZone("UTC") }
 +            .format(Date())
 +}
-
 diff --git a/apps/weblibre/lib/integration/mobile_profile_runtime_bridge.dart b/apps/weblibre/lib/integration/mobile_profile_runtime_bridge.dart
 new file mode 100644
+index 00000000..207d5b92
 --- /dev/null
 +++ b/apps/weblibre/lib/integration/mobile_profile_runtime_bridge.dart
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,104 @@
 +import 'package:flutter/services.dart';
 +import 'package:mobile_profile_weblibre/mobile_profile_weblibre.dart';
 +
@@ -277,10 +391,10 @@ new file mode 100644
 +/// （patches/b4721ae6/002-add-profile-runtime-bridge.patch 载体）。
 +///
 +/// 协议对端是 Android 侧 `RuntimeBridgePlugin`（bind/unbind/health/
-+/// attachSessionIdentity）。任何协议异常（missing field / wrong type /
-+/// unknown result / channel error）都以
-+/// [PlatformException]/[WebLibreRuntimeBridgeError] 形式上抛，
-+/// 由上层 fail-closed 处理——本层不做任何兜底重试或默认值。
++/// attachSessionIdentity，以及 B.3 诊断通道 selfCheck/readLogTail/
++/// clearLog）。任何协议异常（missing field / wrong type / unknown result
++/// / channel error）都以 [PlatformException]/[WebLibreRuntimeBridgeError]
++/// 形式上抛，由上层 fail-closed 处理——本层不做任何兜底重试或默认值。
 +final class MethodChannelRuntimeBridge implements WebLibreRuntimeBridgeChannel {
 +  MethodChannelRuntimeBridge({MethodChannel? channel})
 +      : _channel = channel ?? const MethodChannel('weblibre/runtime_bridge');
@@ -346,6 +460,27 @@ new file mode 100644
 +    return map['adopted'] == true;
 +  }
 +
++  /// B.3 只读诊断快照：EngineProvider 真实状态、Arbiter 提交、桥内会话
++  /// 身份、日志文件位置与大小。不触发任何状态迁移。
++  Future<Map<String, Object?>> selfCheck() async {
++    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('selfCheck');
++    return _asMap(raw, 'selfCheck');
++  }
++
++  /// 读取 b3-bridge.log 末尾 maxChars 个字符（真机取证，只读）。
++  Future<Map<String, Object?>> readLogTail({int maxChars = 8000}) async {
++    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
++      'readLogTail',
++      <String, Object?>{'maxChars': maxChars},
++    );
++    return _asMap(raw, 'readLogTail');
++  }
++
++  /// 清空 b3-bridge.log（取证归档后重置）。
++  Future<void> clearLog() async {
++    await _channel.invokeMethod<Map<dynamic, dynamic>>('clearLog');
++  }
++
 +  static Map<String, Object?> _asMap(Object? raw, String method) {
 +    if (raw is Map) {
 +      return Map<String, Object?>.from(raw);
@@ -353,7 +488,6 @@ new file mode 100644
 +    throw WebLibreRuntimeBridgeError('$method 返回了非对象负载: $raw');
 +  }
 +}
-
 diff --git a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt
 --- a/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt
 +++ b/apps/weblibre/android/app/src/main/kotlin/eu/weblibre/gecko/MainActivity.kt

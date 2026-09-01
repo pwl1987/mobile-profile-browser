@@ -12,12 +12,41 @@
    - 公开下载（无需登录）：[GitHub Release · m3-runtime-dev-20260901](https://github.com/pwl1987/mobile-profile-browser/releases/tag/m3-runtime-dev-20260901)
    - SHA-256：`b83b782db9b0183f327b55c0be836635d70efbb3999eb430b89671569773635a`
    - 或从 CI Artifact（run `33479361728`，`mobile-profile-browser-bridge-debug`）下载。
-2. 抓取证据（全程开着）：
+2. 抓取证据（全程开着，双通道互为冗余）：
    ```bash
+   # 通道一：logcat（实时）
    adb logcat -s MobileProfileBridge:I flutter:V -v time | tee b3-bridge.log
    ```
    bridge 每步输出：sessionId/gen/observedAt/probeKind/pid 与退出时间线。
+   通道二（见下节）：应用内 `b3-bridge.log` 文件 + 检查页快照。
 3. 记录设备观测值到"设备观测记录"并回填 `docs/devices/oppo-find-n3.md`。
+
+## 验收操作通道：应用内检查页（003 补丁）
+
+入口：**设置 → 高级 → 开发者工具 → Profile Runtime 检查 → 打开**
+（全屏页，不新增路由；所有状态展示均来自真实返回值，页面不推测状态）。
+
+- **运行时会话**：编排层句柄（状态中文标签/profileId/browserProfileId/
+  sessionId/generation）——切换、重启后先核对这里。
+- **原生自检（selfCheck）**：EngineProvider 真实状态与 profileId、
+  Arbiter 提交/绑定目录/状态、桥内会话身份、日志路径与大小、PID、
+  检查时间戳——四个独立事实源一次快照，B3-01/B3-12 交叉核验用它。
+- **健康探测（health）**：`alive`/`runtimeAlive`/`bindingPresent`/
+  `probeKind`/`geckoState`/`geckoProfileId`/`observedAt`/`pid`。
+  B3-01 要求 `geckoProfileId` 来自该行的 Kotlin 侧取值；
+  B3-12 要求 `runtimeAlive=false` 且 `alive=false`。
+- **Profile 操作**：创建/启动 B3-A、B3-B（切换）、停止、附加会话身份、
+  健康裁决 unknown、确认存活/死亡、进程死亡后恢复、Dart 重启后恢复。
+  操作互斥（一次一个），每次操作在"操作记录"留痕（最近 80 条）。
+- **日志文件（取证导出）**：显示 `b3-bridge.log` 绝对路径与大小，
+  可读取末尾 8000 字符、清空；PC 侧导出（debug 包可 run-as）：
+  ```bash
+  adb shell run-as eu.weblibre.gecko cat files/b3-bridge.log > b3-bridge-file.log
+  ```
+
+**注意**：进程重启类步骤（B3-02/10/12/16）App 会退出或重启，检查页随
+进程销毁——重启后重新打开入口，用"运行时会话"与"原生自检"核对恢复
+状态，再把操作记录与 health 行一并回填。
 
 ## 验收矩阵
 
@@ -52,9 +81,10 @@
 
 ## 原始证据要求（技术负责人裁定）
 
-逐项带回：**原始日志**（b3-bridge.log）、每步实际状态、sessionId/generation、
-observedAt、probeKind、进程 PID 与退出时间线。裁决按本矩阵逐项进行，
-不接受"测试通过"四字结论。
+逐项带回：**原始日志**（logcat `b3-bridge.log` 与/或应用内文件日志
+`b3-bridge-file.log` 导出件）、检查页 selfCheck/health 快照、每步实际
+状态、sessionId/generation、observedAt、probeKind、进程 PID 与退出
+时间线。裁决按本矩阵逐项进行，不接受"测试通过"四字结论。
 
 ## 设备观测记录（首次执行时填写）
 
