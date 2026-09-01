@@ -17,7 +17,7 @@
 | M3.4.2.6 Rehydration 补丁 | ✅ | Dart 重启 unknown 重建槽位 + health 可信判定 fail-closed + freshness（ADR-007 补遗） |
 | M3.4-B.1 Real Binder 契约 | ✅（PR #13） | 通道契约 + RealWebLibreGeckoBinder + 对接点调研（m3-runtime-bridge.md） |
 | M3.4-B.2-a 切换事务模型 | 🔨 本轮 | bind 返回 bound/restart_required；restartPending 终态 + 会话 restart_pending；上游 Pigeon 通道（GeckoProfileApi）复用确认 |
-| M3.4-B.2-b Kotlin bridge + 补丁 + patched CI | ⏳ | health 探测（含 Gecko 真实探测补强）+ 001/002 补丁 + android-bridge 工作流 |
+| M3.4-B.2-b Kotlin Bridge + 补丁 + CI | 🔨 本轮 | RuntimeBridgePlugin（bind/unbind/health/attachSessionIdentity）+ Dart glue + 001/002 补丁（本地 apply --check 通过）+ android-bridge 工作流（第九个） |
 | M3.4 Real Runtime Integration | 🔨 进行中 | Binder/补丁/真机验收；runbook 见 tools/device/README.md |
 
 ## Next（按里程碑命名追踪，不绑定仓库 PR 号）

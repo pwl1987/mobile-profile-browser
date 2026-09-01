@@ -61,3 +61,15 @@ Debug APK Artifact `mobile-profile-browser-m1-debug` 已产出（2026-08-30）�
 ```
 
 任何一步失败即中止升级并保持原基线不变。
+
+## 上游安全待办（升级时反馈上游）
+
+Mimosa 扫描在 2026-08-31 标记（处置依据已核）：
+
+- `scripts/build_quotes_db.py:79`、`scripts/build_sites_db.py:250`：
+  f-string 拼接 SQL（`DROP TABLE IF EXISTS {table}`）。核实为**上游离线
+  构建脚本**中的内部常量（表名），非外部输入，不进 APK、不在产品
+  运行路径——对本项目不构成可利用注入面；按上游锁定规则不修改
+  子模块，升级时反馈上游改参数化。
+- `packages/.../pigeons/Gecko.g.kt:12146`：Pigeon 生成代码疑似跨文件
+  污点（medium）——生成物，不在本项目修改范围。
