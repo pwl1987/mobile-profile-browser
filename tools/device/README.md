@@ -7,11 +7,14 @@
 
 ## 准备
 
-1. 安装 B.3 验收包（上游+001/002 补丁构建，develop `31c5e0c`，CI Run
-   `33479361728`）：
-   - 公开下载（无需登录）：[GitHub Release · m3-runtime-dev-20260901](https://github.com/pwl1987/mobile-profile-browser/releases/tag/m3-runtime-dev-20260901)
-   - SHA-256：`b83b782db9b0183f327b55c0be836635d70efbb3999eb430b89671569773635a`
-   - 或从 CI Artifact（run `33479361728`，`mobile-profile-browser-bridge-debug`）下载。
+1. 安装 B.3 验收包（上游+001/002/003 补丁构建，develop `9f70386`，CI Run
+   `33505766042`）：
+   - 公开下载（无需登录）：[GitHub Release · m3-bridge-check-20260901](https://github.com/pwl1987/mobile-profile-browser/releases/tag/m3-bridge-check-20260901)
+   - SHA-256：`0d33f940ccc2e05432908f75e9a263075856369773cefb9d05037fa4cb93ac27`
+   - 或从 CI Artifact（run `33505766042`，`mobile-profile-browser-bridge-debug`）下载。
+   - 旧包 m3-runtime-dev-20260901（develop `31c5e0c`，run `33479361728`，SHA-256
+     `b83b782db9b0183f327b55c0be836635d70efbb3999eb430b89671569773635a`）不含应用内
+     检查页（003），仅可作 logcat 单通道参考；执行二十项矩阵须用本包。
 2. 抓取证据（全程开着，双通道互为冗余）：
    ```bash
    # 通道一：logcat（实时）
