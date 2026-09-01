@@ -17,12 +17,13 @@
 
 ## 下载与安装
 
-- **公开下载（无需登录）**：[GitHub Release · m1-baseline-20260830](https://github.com/pwl1987/mobile-profile-browser/releases/tag/m1-baseline-20260830)
+- **当前 B.3 真机验收包（公开下载，无需登录）**：[GitHub Release · m3-runtime-dev-20260901](https://github.com/pwl1987/mobile-profile-browser/releases/tag/m3-runtime-dev-20260901) — 上游 `b4721ae6` + 001/002 补丁构建（develop `31c5e0c`，CI Run `33479361728`），含真实 Gecko 健康探测与 B.3 全链路日志；SHA-256 与安装步骤见 [tools/device/README.md](tools/device/README.md)
+- 历史构建基线：[GitHub Release · m1-baseline-20260830](https://github.com/pwl1987/mobile-profile-browser/releases/tag/m1-baseline-20260830)（纯上游构建，无业务层）
 - Release 列表：<https://github.com/pwl1987/mobile-profile-browser/releases>
 
-安装：下载 APK → 允许安装未知来源 → 安装 → （业务层就绪后）创建 Profile → 启动浏览环境。
+安装：下载 APK → 允许安装未知来源 → 安装 → 创建 Profile → 启动浏览环境。
 
-说明：当前 APK 为锁定基线 `b4721ae6` 的纯上游 WebLibre 构建验证包，**尚未包含 Profile 业务层**（随补丁流接入，见 [patches/README.md](patches/README.md)）；Debug 签名，仅用于构建基线验证与真机验收。自 M3 起进入中文产品 Release 体系（模板见 [docs/release/](docs/release/release-notes-template.md)）。
+说明：B.3 验收包在锁定基线 `b4721ae6` 上叠加本项目 001/002 补丁（补丁承载 Runtime Bridge 与 Profile 业务层接入，见 [patches/README.md](patches/README.md)）；Debug 签名，仅用于构建基线验证与真机验收。自 M3 起进入中文产品 Release 体系（模板见 [docs/release/](docs/release/release-notes-template.md)）。
 
 ## 项目定位
 
